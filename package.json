@@ -1,0 +1,17 @@
+{
+  "name": "luaknight-server",
+  "version": "1.0.0",
+  "description": "LuaKnight Backend Server with Discord Bot",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": ">=16.x"
+  }
+}
