@@ -101,13 +101,28 @@
             draftScript: { projectId: null, file: null, code: null }
         };
 
-        // --- API Syncing ---
+        // --- API Syncing w/ Local Storage Auto-Restore ---
         async function loadFromServer() {
+            // 1. Load from browser's local storage as a safety net
+            const localData = localStorage.getItem('sanctuary_data');
+            if (localData) {
+                state.projects = JSON.parse(localData);
+            }
+
+            // 2. Sync with Backend
             try {
                 const res = await fetch('/api/sync');
                 if (res.ok) {
                     const data = await res.json();
-                    state.projects = data.projects || [];
+                    if (data.projects && data.projects.length > 0) {
+                        // Server has data, use it as source of truth
+                        state.projects = data.projects;
+                        localStorage.setItem('sanctuary_data', JSON.stringify(state.projects));
+                    } else if (state.projects.length > 0) {
+                        // Server is wiped (Railway restarted), but we have local data!
+                        // Push our local data to the server to restore it instantly.
+                        await syncToServer();
+                    }
                 }
             } catch (err) {
                 console.warn('Backend disconnected, running in local mode.', err);
@@ -117,6 +132,10 @@
         }
 
         async function syncToServer() {
+            // Save locally first
+            localStorage.setItem('sanctuary_data', JSON.stringify(state.projects));
+
+            // Push to backend
             try {
                 await fetch('/api/sync', {
                     method: 'POST',
@@ -299,7 +318,7 @@
                     </div>
                     <div class="flex items-center gap-1.5">
                         <button onclick="openEditScriptModal('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-brand-400 hover:bg-brand-500/10 rounded-md transition-colors flex items-center gap-1.5"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i> EDIT</button>
-                        <button onclick="copyToClipboard('loadstring(game:HttpGet(\\'${window.location.origin}/${projectId}/${s.id}\\'))()', 'Copied Script Loader!')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-md transition-colors flex items-center gap-1.5"><i data-lucide="copy" class="w-3.5 h-3.5"></i> COPY LOADER</button>
+                        <button onclick="copyToClipboard('loadstring(game:HttpGet(\\'${window.location.origin}/raw/${projectId}/${s.id}\\'))()', 'Copied Script Loader!')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-md transition-colors flex items-center gap-1.5"><i data-lucide="copy" class="w-3.5 h-3.5"></i> COPY LOADER</button>
                         <button onclick="deleteScript('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors flex items-center gap-1.5"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> DELETE</button>
                     </div>
                 </div>
@@ -552,7 +571,7 @@
                     <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-800/80 bg-surface-900/50">
                         <h3 class="text-sm font-bold text-white flex items-center gap-2"><i data-lucide="code" class="text-zinc-400 w-4 h-4"></i> Loader Code (Lua)</h3>
                         <div class="flex items-center gap-2">
-                            <button onclick="copyLoaderCode()" class="px-3 py-1.5 text-xs text-zinc-300 hover:text-white bg-surface-800 rounded-md border border-zinc-700/50">Copy Loader</button>
+                            <button onclick="copyLoaderLink('${projectId}')" class="px-3 py-1.5 text-xs text-zinc-300 hover:text-white bg-surface-800 rounded-md border border-zinc-700/50">Copy Loader URL</button>
                             <button onclick="autoGenerateLoader('${projectId}')" class="px-3 py-1.5 text-xs text-brand-400 bg-brand-500/10 rounded-md border border-brand-500/20">Auto Generate</button>
                             <button onclick="saveLoaderCode('${projectId}')" class="px-3 py-1.5 text-xs text-white bg-brand-600 rounded-md shadow-lg shadow-brand-500/20">Save</button>
                             <button onclick="closeModal()" class="p-1.5 text-zinc-500 hover:text-white rounded-md ml-2"><i data-lucide="x" class="w-4 h-4"></i></button>
@@ -572,16 +591,23 @@
 
         function autoGenerateLoader(projectId) {
             if (window.loaderEditor) {
-                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n}\n\nlocal Script = Scripts[game.GameId]\nif Script then\n    loadstring(game:HttpGet(Script))()\nelse\n    -- For the user to decide\nend`);
+                const project = state.projects.find(p => p.id === projectId);
+                let scriptsTable = "";
+                
+                // Smart generator: Automatically grabs the URLs of active scripts and adds them to the Lua table!
+                if (project && project.scripts) {
+                    project.scripts.forEach(s => {
+                        scriptsTable += `    [${s.gameId}] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`;
+                    });
+                }
+                
+                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\n\nlocal Script = Scripts[game.GameId]\nif Script then\n    loadstring(game:HttpGet(Script))()\nelse\n    -- For the user to decide\nend`);
                 showToast('Auto-generated loader template');
             }
         }
 
-        function copyLoaderCode() {
-            if (window.loaderEditor) {
-                const code = window.loaderEditor.getValue();
-                if (code.trim()) copyToClipboard(code, 'Loader code copied to clipboard!');
-            }
+        function copyLoaderLink(projectId) {
+            copyToClipboard(`loadstring(game:HttpGet('${window.location.origin}/loader/${projectId}'))()`, 'Custom Loader URL copied!');
         }
 
         async function saveLoaderCode(projectId) {
