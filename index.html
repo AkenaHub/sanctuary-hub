@@ -1,658 +1,731 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Shield, Lock, Terminal, Check, Copy, Code, Zap, Database, Key, Users, 
-  LayoutDashboard, Settings, LogOut, ChevronRight, Plus, Folder, FileCode, 
-  Trash2, Upload, RefreshCw, ExternalLink, AlertTriangle, FileText, Edit, 
-  Activity, Server, UserPlus, LogIn
-} from 'lucide-react';
-
-// --- LURIUM PROTECTION HOOK ---
-const useLuriumProtection = () => {
-  useEffect(() => {
-    const handleCopy = (e) => {
-      const selection = document.getSelection().toString();
-      if (selection.includes('game:HttpGet') || selection.includes('loadstring')) {
-        e.clipboardData.setData('text/plain', 'setclipboard("Protected by Lurium")');
-        e.preventDefault();
-        console.warn("Lurium Protection: Raw URL copy attempt blocked.");
-      } else if (selection) {
-        const protectedText = `-- LURIUM SECURED\n${selection}`;
-        e.clipboardData.setData('text/plain', protectedText);
-        e.preventDefault();
-      }
-    };
-    document.addEventListener('copy', handleCopy);
-    return () => document.removeEventListener('copy', handleCopy);
-  }, []);
-};
-
-export default function App() {
-  useLuriumProtection();
-
-  // --- APP STATE ---
-  const [user, setUser] = useState(null); // null = not logged in
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [isAuthMode, setIsAuthMode] = useState('login'); // 'login' or 'register'
-  
-  // Data States
-  const [projects, setProjects] = useState([]);
-  const [adminKeys, setAdminKeys] = useState([]);
-  
-  // Modal State
-  const [modalConfig, setModalConfig] = useState({ isOpen: false, type: null, data: null });
-
-  // Form States
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
-  const [licenseKey, setLicenseKey] = useState('');
-  const [authError, setAuthError] = useState('');
-  
-  const [customFileName, setCustomFileName] = useState('');
-  const [editProjectName, setEditProjectName] = useState('');
-  const [deleteConfirmation, setDeleteConfirmation] = useState('');
-  
-  const [keyGenDuration, setKeyGenDuration] = useState('30');
-  const [keyGenCount, setKeyGenCount] = useState('1');
-
-  // --- API / AUTH HANDLERS ---
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setAuthError('');
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setUser({ email, username: data.username, role: data.role });
-        fetchUserData(email);
-      } else {
-        setAuthError(data.error || "Login failed");
-      }
-    } catch (err) {
-      // Fallback for preview mode if server is not running
-      console.log("Server not found, using preview mock login.");
-      setUser({ email: email || 'demo@lurium.app', username: 'DemoAdmin', role: 'Developer Access' });
-      setProjects([
-        { id: "1", name: "Nebula Hub", isExpanded: true, scripts: [{ id: "101", name: "loader.lua", version: 1, date: "Just now" }] }
-      ]);
-    }
-  };
-
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    setAuthError('');
-    try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, username, password, key: licenseKey })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setUser({ email, username, role: data.role });
-        fetchUserData(email);
-      } else {
-        setAuthError(data.error || "Registration failed");
-      }
-    } catch (err) {
-      console.log("Server not found, using preview mock registration.");
-      setUser({ email, username, role: 'Developer Access' });
-    }
-  };
-
-  const fetchUserData = async (userEmail) => {
-    try {
-      const res = await fetch(`/api/user/data?email=${userEmail}`);
-      const data = await res.json();
-      if (data.projects) setProjects(data.projects);
-    } catch (e) { console.log(e); }
-  };
-
-  const syncData = async (updatedProjects) => {
-    setProjects(updatedProjects);
-    if (!user) return;
-    try {
-      await fetch('/api/user/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email, projects: updatedProjects })
-      });
-    } catch (e) { console.log("Offline save"); }
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    setProjects([]);
-  };
-
-  // --- PROJECT HANDLERS ---
-  const toggleProject = (projectId) => {
-    setProjects(projects.map(p => p.id === projectId ? { ...p, isExpanded: !p.isExpanded } : p));
-  };
-
-  const openModal = (type, data = null) => {
-    setModalConfig({ isOpen: true, type, data });
-    setCustomFileName('');
-    setEditProjectName(data?.project?.name || '');
-    setDeleteConfirmation('');
-  };
-
-  const closeModal = () => setModalConfig({ isOpen: false, type: null, data: null });
-
-  const handleCreateProject = () => {
-    const newProj = { id: Date.now().toString(), name: "New Project", isExpanded: true, scripts: [] };
-    syncData([newProj, ...projects]);
-    openModal('EDIT_PROJECT', { projectId: newProj.id, project: newProj });
-  };
-
-  const handleCreateScript = () => {
-    if (!customFileName) return;
-    const { projectId } = modalConfig.data;
-    syncData(projects.map(p => {
-      if (p.id === projectId) {
-        return { ...p, isExpanded: true, scripts: [...p.scripts, { id: Date.now().toString(), name: customFileName, version: 1, date: new Date().toLocaleDateString() }] };
-      }
-      return p;
-    }));
-    closeModal();
-  };
-
-  const handleEditProject = () => {
-    const { projectId } = modalConfig.data;
-    syncData(projects.map(p => p.id === projectId ? { ...p, name: editProjectName } : p));
-    closeModal();
-  };
-
-  const handleDeleteProject = () => {
-    const { projectId } = modalConfig.data;
-    syncData(projects.filter(p => p.id !== projectId));
-    closeModal();
-  };
-
-  const handleDeleteScript = (projectId, scriptId) => {
-    syncData(projects.map(p => {
-      if (p.id === projectId) return { ...p, scripts: p.scripts.filter(s => s.id !== scriptId) };
-      return p;
-    }));
-  };
-
-  const handleReuploadScript = () => {
-    const { projectId, scriptId } = modalConfig.data;
-    syncData(projects.map(p => {
-      if (p.id === projectId) {
-        return {
-          ...p,
-          scripts: p.scripts.map(s => 
-            s.id === scriptId ? { ...s, name: customFileName || s.name, version: (s.version || 1) + 1, date: "Just now" } : s
-          )
-        };
-      }
-      return p;
-    }));
-    closeModal();
-  };
-
-  // --- ADMIN HANDLERS ---
-  const fetchKeys = async () => {
-    try {
-      const res = await fetch('/api/admin/keys');
-      const data = await res.json();
-      setAdminKeys(data);
-    } catch(e) { console.log(e); }
-  };
-
-  const generateKeys = async () => {
-    try {
-      const res = await fetch('/api/admin/generate-key', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ duration: keyGenDuration, count: keyGenCount })
-      });
-      const data = await res.json();
-      if(data.success) setAdminKeys(data.allKeys);
-    } catch (e) {
-      // Mock generation for preview
-      const newKey = { key: "LURIUM-" + Math.random().toString(36).substr(2, 8).toUpperCase(), usedBy: "Unclaimed", expiresAt: "2099-12-31" };
-      setAdminKeys([...adminKeys, newKey]);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'admin' && user?.role === 'Developer Access') fetchKeys();
-  }, [activeTab, user]);
-
-  // --- RENDERERS ---
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-[#0b0f17] flex flex-col items-center justify-center relative overflow-hidden font-sans text-slate-300">
-        {/* Abstract Background */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-indigo-600/20 blur-[150px] rounded-full pointer-events-none"></div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sanctuary | Script Manager</title>
+    <!-- Tailwind CSS for Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide for modern Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- CodeMirror for Lua Editor -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/lua/lua.min.js"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        brand: { 500: '#4f46e5', 600: '#4338ca' },
+                        surface: { 900: '#09090b', 800: '#111113', 700: '#1a1a1e' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom Dark Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
         
-        <div className="bg-[#151b2b]/80 backdrop-blur-xl border border-[#2a3143] rounded-2xl p-8 w-full max-w-md shadow-2xl relative z-10 flex flex-col">
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 p-[1px] shadow-lg shadow-indigo-500/20">
-              <div className="w-full h-full bg-[#151b2b] rounded-2xl flex items-center justify-center">
-                <Shield className="w-8 h-8 text-indigo-400" />
-              </div>
-            </div>
-          </div>
-          
-          <h1 className="text-3xl font-bold text-white mb-2 text-center">Lurium Identity</h1>
-          <p className="text-slate-400 text-center mb-8 text-sm">Secure authentication gateway</p>
+        /* Modal & Toast Animations */
+        @keyframes toastEnter {
+            0% { transform: translateX(100%) scale(0.9); opacity: 0; }
+            100% { transform: translateX(0) scale(1); opacity: 1; }
+        }
+        @keyframes toastLeave {
+            0% { transform: translateX(0) scale(1); opacity: 1; }
+            100% { transform: translateX(100%) scale(0.9); opacity: 0; }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.98); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .toast-enter { animation: toastEnter 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        .toast-leave { animation: toastLeave 0.3s cubic-bezier(0.5, 0, 0.2, 1) forwards; }
+        .modal-animate { animation: fadeIn 0.2s ease-out forwards; }
 
-          {authError && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg text-sm mb-4 text-center">
-              {authError}
-            </div>
-          )}
+        /* CodeMirror Sanctuary Theme */
+        .cm-s-sanctuary.CodeMirror { 
+            background: #121215; 
+            color: #e2e8f0; 
+            border-radius: 0.75rem; 
+            padding: 1.25rem; 
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; 
+            font-size: 13px; 
+            line-height: 1.6; 
+            border: 1px solid rgba(39, 39, 42, 0.8);
+            height: 320px;
+        }
+        .cm-s-sanctuary .CodeMirror-cursor { border-left: 2px solid #515dfa; }
+        .cm-s-sanctuary span.cm-keyword { color: #c678dd; } 
+        .cm-s-sanctuary span.cm-string { color: #98c379; } 
+        .cm-s-sanctuary span.cm-comment { color: #5c6370; font-style: italic; } 
+        .cm-s-sanctuary span.cm-variable, .cm-s-sanctuary span.cm-property, .cm-s-sanctuary span.cm-def { color: #e2e8f0; } 
+        .cm-s-sanctuary span.cm-builtin, .cm-s-sanctuary span.cm-variable-2 { color: #61afef; }
+        .cm-s-sanctuary span.cm-operator, .cm-s-sanctuary span.cm-punctuation { color: #abb2bf; }
+        .cm-s-sanctuary .CodeMirror-selected { background: rgba(79, 70, 229, 0.3) !important; }
+        .cm-s-sanctuary.CodeMirror-focused { border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.5); outline: none; }
+    </style>
+</head>
+<body class="bg-black text-zinc-100 font-sans h-screen flex overflow-hidden selection:bg-brand-500/30">
 
-          <div className="flex bg-[#0a0d14] rounded-lg p-1 mb-6 border border-[#2a3143]">
-            <button 
-              onClick={() => setIsAuthMode('login')}
-              className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${isAuthMode === 'login' ? 'bg-[#151b2b] text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
-            >
-              Login
-            </button>
-            <button 
-              onClick={() => setIsAuthMode('register')}
-              className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${isAuthMode === 'register' ? 'bg-[#151b2b] text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
-            >
-              Register Key
-            </button>
-          </div>
-
-          <form onSubmit={isAuthMode === 'login' ? handleLogin : handleRegister} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Email</label>
-              <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-[#0a0d14] border border-[#2a3143] rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500/50 transition-colors" placeholder="admin@lurium.app"/>
-            </div>
-            
-            {isAuthMode === 'register' && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Username</label>
-                <input type="text" required value={username} onChange={e => setUsername(e.target.value)} className="w-full bg-[#0a0d14] border border-[#2a3143] rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500/50 transition-colors" placeholder="johndoe"/>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Password</label>
-              <input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-[#0a0d14] border border-[#2a3143] rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500/50 transition-colors" placeholder="••••••••"/>
-            </div>
-
-            {isAuthMode === 'register' && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">License Key</label>
-                <input type="text" required value={licenseKey} onChange={e => setLicenseKey(e.target.value)} className="w-full bg-[#0a0d14] border border-[#2a3143] rounded-lg px-4 py-2.5 text-indigo-400 font-mono focus:outline-none focus:border-indigo-500/50 transition-colors" placeholder="XXXX-XXXX-XXXX-XXXX"/>
-              </div>
-            )}
-
-            <button type="submit" className="w-full py-3 mt-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2">
-              {isAuthMode === 'login' ? <LogIn className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-              {isAuthMode === 'login' ? 'Access Dashboard' : 'Claim License'}
-            </button>
-          </form>
+    <!-- Left Sidebar / Tabs Container -->
+    <aside class="w-64 bg-surface-900 border-r border-zinc-800 flex flex-col z-10 shadow-2xl">
+        <div class="p-6 border-b border-zinc-800/50">
+            <h1 class="text-xl font-bold text-white flex items-center gap-3">
+                <div class="p-1.5 bg-brand-500/20 rounded-md">
+                    <i data-lucide="shield" class="text-brand-500 w-5 h-5"></i>
+                </div>
+                Sanctuary
+            </h1>
         </div>
-      </div>
-    );
-  }
-
-  const renderModal = () => {
-    if (!modalConfig.isOpen) return null;
-    const { type, data } = modalConfig;
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-[#151b2b]/95 backdrop-blur-xl border border-[#2a3143] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative">
-          <div className="p-6 relative z-10">
-            
-            {type === 'CREATE_SCRIPT' && (
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-white mb-4">Create Script</h2>
-                <div className="border-2 border-dashed rounded-xl p-8 text-center border-[#2a3143] bg-[#0a0d14] hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-colors cursor-pointer">
-                  <Upload className="w-8 h-8 text-slate-500 mx-auto mb-3" />
-                  <p className="text-sm text-slate-300">Drag & Drop .lua or .txt file</p>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm text-slate-400">Custom File Name</label>
-                  <input type="text" value={customFileName} onChange={e => setCustomFileName(e.target.value)} placeholder="e.g., source.lua" className="w-full bg-[#0a0d14] border border-[#2a3143] rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500/50 transition-all"/>
-                </div>
-                <div className="flex justify-end gap-3 mt-6">
-                  <button onClick={closeModal} className="px-4 py-2 text-slate-400 hover:text-white transition-colors">Cancel</button>
-                  <button onClick={handleCreateScript} disabled={!customFileName} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium shadow-lg disabled:opacity-50 transition-all">Create Script</button>
-                </div>
-              </div>
-            )}
-
-            {type === 'EDIT_PROJECT' && (
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-white mb-4">Project Settings</h2>
-                <div className="space-y-2">
-                  <label className="text-sm text-slate-400">Project Name</label>
-                  <input type="text" value={editProjectName} onChange={e => setEditProjectName(e.target.value)} className="w-full bg-[#0a0d14] border border-[#2a3143] rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500/50 transition-all"/>
-                </div>
-                <div className="flex flex-col gap-3 mt-6 pt-4 border-t border-[#2a3143]">
-                  <button onClick={() => openModal('DELETE_PROJECT', data)} className="w-full px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg font-medium transition-colors flex items-center justify-center gap-2">
-                    <Trash2 className="w-4 h-4" /> Delete Project
-                  </button>
-                  <div className="flex justify-end gap-3 mt-2">
-                    <button onClick={closeModal} className="px-4 py-2 text-slate-400 hover:text-white transition-colors">Cancel</button>
-                    <button onClick={handleEditProject} disabled={!editProjectName.trim()} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-all">Save Changes</button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {type === 'DELETE_PROJECT' && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 text-red-400 mb-2">
-                  <AlertTriangle className="w-6 h-6" />
-                  <h2 className="text-xl font-semibold">Delete Project</h2>
-                </div>
-                <p className="text-slate-400 text-sm">To confirm, type <strong className="text-white select-none">delete {data.project.name}</strong></p>
-                <input type="text" value={deleteConfirmation} onChange={e => setDeleteConfirmation(e.target.value)} placeholder={`delete ${data.project.name}`} className="w-full bg-[#0a0d14] border border-[#2a3143] rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-red-500/50 transition-all"/>
-                <div className="flex justify-end gap-3 mt-6">
-                  <button onClick={closeModal} className="px-4 py-2 text-slate-400 hover:text-white transition-colors">Cancel</button>
-                  <button onClick={handleDeleteProject} disabled={deleteConfirmation !== `delete ${data.project.name}`} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium disabled:opacity-50 transition-all">Confirm Delete</button>
-                </div>
-              </div>
-            )}
-
-            {type === 'REUPLOAD_SCRIPT' && (
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-white mb-2">Reupload Script</h2>
-                <p className="text-sm text-slate-400 mb-4">Updating: <span className="text-white">{data.script.name}</span></p>
-                <div className="border-2 border-dashed rounded-xl p-8 text-center border-[#2a3143] bg-[#0a0d14] hover:border-indigo-500/50 transition-colors cursor-pointer">
-                  <Upload className="w-8 h-8 text-slate-500 mx-auto mb-3" />
-                  <p className="text-sm text-slate-300">Drop new file to increment version</p>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm text-slate-400">Rename File (Optional)</label>
-                  <input type="text" value={customFileName} onChange={e => setCustomFileName(e.target.value)} placeholder={data.script.name} className="w-full bg-[#0a0d14] border border-[#2a3143] rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500/50 transition-all"/>
-                </div>
-                <div className="flex justify-end gap-3 mt-6">
-                  <button onClick={closeModal} className="px-4 py-2 text-slate-400 hover:text-white transition-colors">Cancel</button>
-                  <button onClick={handleReuploadScript} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-all">Update Version</button>
-                </div>
-              </div>
-            )}
-
-            {type === 'RAW_URL_DENIED' && (
-              <div className="text-center space-y-4 py-4">
-                <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-500/20">
-                  <Lock className="w-8 h-8 text-red-400" />
-                </div>
-                <h2 className="text-xl font-semibold text-white">Raw Access Denied</h2>
-                <p className="text-slate-400 text-sm">
-                  LURIUM_PROTECTION has secured this asset. Direct browser viewing of the raw source code is blocked. Access is only permitted via in-game executors.
-                </p>
-                <button onClick={closeModal} className="mt-6 w-full px-4 py-2 bg-[#2a3143] hover:bg-[#3b445c] text-white rounded-lg font-medium transition-all">Dismiss</button>
-              </div>
-            )}
-
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="min-h-screen bg-[#0b0f17] text-slate-300 font-sans flex selection:bg-indigo-500/30">
-      
-      {/* --- SIDEBAR --- */}
-      <aside className="w-64 bg-[#111520]/90 backdrop-blur-xl border-r border-[#2a3143] flex flex-col z-20 shadow-xl">
-        <div className="h-20 flex items-center px-6 border-b border-[#2a3143]">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center mr-3 shadow-lg shadow-indigo-500/20">
-            <Shield className="w-4 h-4 text-white" />
-          </div>
-          <span className="text-xl font-bold text-white tracking-tight">Lurium</span>
-        </div>
-
-        <nav className="flex-1 px-4 py-6 space-y-2">
-          <p className="px-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Command Center</p>
-          
-          <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all font-medium text-sm ${activeTab === 'dashboard' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400 hover:bg-[#1a2033] hover:text-slate-200 border border-transparent'}`}>
-            <LayoutDashboard className="w-4 h-4" /> Dashboard
-          </button>
-          
-          <button onClick={() => setActiveTab('projects')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all font-medium text-sm ${activeTab === 'projects' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400 hover:bg-[#1a2033] hover:text-slate-200 border border-transparent'}`}>
-            <Code className="w-4 h-4" /> Projects Module
-          </button>
-
-          {user.role === 'Developer Access' && (
-            <>
-              <p className="px-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-8 mb-4">Administration</p>
-              <button onClick={() => setActiveTab('admin')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all font-medium text-sm ${activeTab === 'admin' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400 hover:bg-[#1a2033] hover:text-slate-200 border border-transparent'}`}>
-                <Key className="w-4 h-4" /> Identity & Keys
-              </button>
-            </>
-          )}
+        <nav class="flex-1 p-4 space-y-1">
+            <button onclick="setTab('projects')" id="tab-projects" class="w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium">
+                <i data-lucide="folder" class="w-5 h-5"></i> Projects
+            </button>
+            <button onclick="setTab('settings')" id="tab-settings" class="w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium">
+                <i data-lucide="settings" class="w-5 h-5"></i> Settings
+            </button>
         </nav>
+    </aside>
 
-        <div className="p-4 border-t border-[#2a3143]">
-          <div className="flex items-center gap-3 p-3 bg-[#0a0d14] rounded-xl border border-[#2a3143]">
-            <div className="w-9 h-9 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold uppercase">
-              {user.username.charAt(0)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user.username}</p>
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">{user.role}</p>
-            </div>
-            <button onClick={handleLogout} className="p-1.5 text-slate-500 hover:text-red-400 transition-colors rounded-lg hover:bg-red-500/10">
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-y-auto relative bg-[#030303]">
+        <div id="main-content" class="p-8 max-w-6xl mx-auto min-h-full">
+            <!-- Dynamic content injected here via JS -->
         </div>
-      </aside>
+    </main>
 
-      {/* --- MAIN CONTENT --- */}
-      <main className="flex-1 p-6 lg:p-10 h-screen overflow-y-auto relative custom-scrollbar">
-        {/* Ambient Glow */}
-        <div className="absolute top-[-10%] left-[20%] w-[50%] h-[30%] bg-indigo-600/10 blur-[120px] pointer-events-none rounded-full"></div>
-        
-        <header className="flex justify-between items-center mb-10 relative z-10">
-          <div>
-            <h1 className="text-3xl font-bold text-white tracking-tight capitalize">{activeTab.replace('-', ' ')}</h1>
-            <p className="text-sm text-slate-400 mt-1">Lurium Secure Environment</p>
-          </div>
-          <div className="flex items-center gap-3 bg-[#151b2b]/90 border border-[#2a3143] py-2 px-4 rounded-full shadow-lg backdrop-blur-md">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
-            <span className="text-xs font-bold text-slate-300 tracking-wider">NETWORK SECURE</span>
-          </div>
-        </header>
+    <!-- Modals Container -->
+    <div id="modal-container"></div>
+    
+    <!-- Toasts Container -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-        <div className="relative z-10 max-w-6xl mx-auto space-y-6">
-          
-          {/* DASHBOARD TAB */}
-          {activeTab === 'dashboard' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-[#151b2b]/80 backdrop-blur-md border border-[#2a3143] rounded-2xl p-6 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                <div className="flex justify-between items-start mb-4">
-                  <p className="text-sm font-medium text-slate-400">Total Deployments</p>
-                  <Database className="w-5 h-5 text-indigo-400 opacity-50" />
-                </div>
-                <h3 className="text-4xl font-bold text-white">12,842</h3>
-              </div>
-              <div className="bg-[#151b2b]/80 backdrop-blur-md border border-[#2a3143] rounded-2xl p-6 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
-                <div className="flex justify-between items-start mb-4">
-                  <p className="text-sm font-medium text-slate-400">Active Hooks</p>
-                  <Activity className="w-5 h-5 text-emerald-400 opacity-50" />
-                </div>
-                <h3 className="text-4xl font-bold text-white">4,091</h3>
-              </div>
-              <div className="bg-[#151b2b]/80 backdrop-blur-md border border-[#2a3143] rounded-2xl p-6 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
-                <div className="flex justify-between items-start mb-4">
-                  <p className="text-sm font-medium text-slate-400">Blocked Extractions</p>
-                  <Shield className="w-5 h-5 text-red-400 opacity-50" />
-                </div>
-                <h3 className="text-4xl font-bold text-white">843</h3>
-              </div>
-            </div>
-          )}
+    <script>
+        // --- State Management ---
+        const state = {
+            activeTab: 'projects',
+            projects: [],
+            draftScript: { projectId: null, file: null }
+        };
 
-          {/* PROJECTS TAB */}
-          {activeTab === 'projects' && (
-            <div>
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold text-white">Project Modules</h2>
-                <button onClick={handleCreateProject} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-indigo-500/20">
-                  <Plus className="w-4 h-4" /> New Module
-                </button>
-              </div>
+        // --- Core Utilities ---
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const isError = type === 'error';
+            
+            toast.className = `toast-enter pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border border-zinc-800 bg-[#111113] shadow-2xl text-sm font-semibold text-white`;
+            
+            toast.innerHTML = `
+                <i data-lucide="${isError ? 'alert-circle' : 'check-circle'}" class="w-[18px] h-[18px] fill-white text-[#111113]"></i>
+                <span>${message}</span>
+            `;
+            
+            container.appendChild(toast);
+            lucide.createIcons();
 
-              <div className="space-y-4">
-                {projects.map(project => (
-                  <div key={project.id} className="bg-[#151b2b]/80 backdrop-blur-md border border-[#2a3143] rounded-2xl overflow-hidden shadow-xl transition-all hover:border-[#3b445c]">
-                    
-                    {/* Module Header */}
-                    <div className="flex items-center justify-between p-5 group">
-                      <div className="flex items-center gap-4 cursor-pointer flex-1" onClick={() => toggleProject(project.id)}>
-                        <div className={`p-1.5 rounded-lg transition-all ${project.isExpanded ? 'bg-indigo-500/20 text-indigo-400' : 'text-slate-500 group-hover:text-slate-300'}`}>
-                          <ChevronRight className={`w-5 h-5 transition-transform duration-300 ${project.isExpanded ? 'rotate-90' : ''}`} />
+            setTimeout(() => {
+                toast.classList.remove('toast-enter');
+                toast.classList.add('toast-leave');
+                setTimeout(() => toast.remove(), 300); // Matches leave animation duration
+            }, 3000);
+        }
+
+        function copyToClipboard(text, successMsg) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed"; 
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast(successMsg || 'Copied to clipboard!');
+            } catch (err) {
+                showToast('Failed to copy text', 'error');
+            }
+            document.body.removeChild(textArea);
+        }
+
+        async function generateSHA256(text) {
+            const msgBuffer = new TextEncoder().encode(text + Date.now().toString());
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function getShortDate() {
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const today = new Date();
+            // Bypass bracket bug using .at()
+            return `${months.at(today.getMonth())} ${today.getDate()}`;
+        }
+
+        function incrementVersion(ver) {
+            let parts = ver.replace('v', '').split('.');
+            // Bypass bracket bug using .pop() and .push()
+            let patch = parseInt(parts.pop() || 0) + 1;
+            parts.push(patch);
+            return `v${parts.join('.')}`;
+        }
+
+        // --- File Handling Functions ---
+        function handleFileSelect(e) { handleFiles(e.target.files); }
+
+        function handleFiles(files) {
+            if(files && files.length > 0) {
+                // Bypass bracket bug using .item(0) to securely grab the first file
+                const file = files.item(0); 
+                if(file && file.name && file.name.toLowerCase().endsWith('.lua')) {
+                    state.draftScript.file = file;
+                    document.getElementById('drop-text').innerHTML = `<span class="text-emerald-400 font-semibold bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">${file.name}</span>`;
+                } else {
+                    showToast('Only .lua files are permitted', 'error');
+                }
+            }
+        }
+
+        function setupDragDrop() {
+            const dropZone = document.getElementById('drop-zone');
+            if(!dropZone) return;
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+                dropZone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, false);
+            });
+
+            ['dragenter', 'dragover'].forEach(evt => {
+                dropZone.addEventListener(evt, () => dropZone.classList.add('border-brand-500', 'bg-brand-500/5'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(evt => {
+                dropZone.addEventListener(evt, () => dropZone.classList.remove('border-brand-500', 'bg-brand-500/5'), false);
+            });
+
+            dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+        }
+
+        // --- Rendering Engine ---
+        function setTab(tab) {
+            state.activeTab = tab;
+            renderApp();
+        }
+
+        function renderApp() {
+            document.getElementById('tab-projects').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'projects' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
+            document.getElementById('tab-settings').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'settings' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
+
+            const main = document.getElementById('main-content');
+            
+            if (state.activeTab === 'projects') {
+                main.innerHTML = `
+                    <div class="flex justify-between items-center mb-8">
+                        <div>
+                            <h2 class="text-3xl font-bold text-white tracking-tight">Projects</h2>
+                            <p class="text-zinc-500 text-sm mt-1">Manage your script hubs and loaders.</p>
                         </div>
-                        <div className="flex flex-col">
-                          <h3 className="text-lg font-bold text-white tracking-wide">{project.name}</h3>
-                          <span className="text-[10px] text-slate-500 font-mono tracking-widest">{project.id}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <button onClick={() => openModal('CREATE_SCRIPT', { projectId: project.id })} className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded-lg transition-all flex items-center gap-2">
-                          <Code className="w-3 h-3" /> Create Script
+                        <button onclick="openCreateProjectModal()" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-all shadow-[0_0_15px_rgba(79,70,229,0.3)] hover:shadow-[0_0_20px_rgba(79,70,229,0.5)]">
+                            <i data-lucide="plus" class="w-5 h-5"></i> Create Project
                         </button>
-                        <button onClick={() => openModal('EDIT_PROJECT', { projectId: project.id, project })} className="p-2 text-slate-400 hover:text-white hover:bg-[#2a3143] rounded-lg transition-all border border-transparent hover:border-[#3b445c]" title="Project Settings">
-                          <Settings className="w-4 h-4" />
-                        </button>
-                      </div>
                     </div>
-
-                    {/* Scripts List */}
-                    {project.isExpanded && (
-                      <div className="border-t border-[#2a3143] bg-[#0a0d14]/50 p-4 space-y-2">
-                        {(!project.scripts || project.scripts.length === 0) ? (
-                          <div className="text-center py-8 border border-dashed border-[#2a3143] rounded-xl">
-                            <FileCode className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                            <p className="text-slate-500 text-sm">No scripts deployed yet.</p>
-                          </div>
-                        ) : (
-                          project.scripts.map(script => (
-                            <div key={script.id} className="flex items-center justify-between p-4 bg-[#151b2b] border border-[#2a3143] rounded-xl hover:border-indigo-500/30 transition-all group">
-                              <div className="flex items-center gap-4">
-                                <div className="w-8 h-8 rounded-lg bg-[#0a0d14] border border-[#2a3143] flex items-center justify-center">
-                                  <FileText className="w-4 h-4 text-indigo-400" />
-                                </div>
+                    <div class="space-y-4">
+                        ${renderProjectsList()}
+                    </div>
+                `;
+            } else {
+                main.innerHTML = `
+                    <div class="max-w-2xl">
+                        <h2 class="text-3xl font-bold text-white tracking-tight mb-8">Settings</h2>
+                        <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6">
+                            <div class="flex items-center gap-4 text-zinc-400 pb-4 border-b border-zinc-800/50 mb-4">
+                                <i data-lucide="monitor" class="w-6 h-6"></i>
                                 <div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm font-bold text-white">{script.name}</span>
-                                    <span className="text-[10px] font-bold uppercase bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20">v{script.version}</span>
-                                  </div>
-                                  <p className="text-xs text-slate-500 mt-0.5">Updated: {script.date}</p>
+                                    <p class="text-white font-medium">Theme Preferences</p>
+                                    <p class="text-xs">Clean Black and Indigo Blue (Active)</p>
                                 </div>
-                              </div>
-
-                              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => openModal('RAW_URL_DENIED')} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-white hover:bg-[#2a3143] rounded-lg transition-all">
-                                  <ExternalLink className="w-3.5 h-3.5" /> Raw URL
-                                </button>
-                                <button onClick={() => openModal('REUPLOAD_SCRIPT', { projectId: project.id, script })} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-all">
-                                  <RefreshCw className="w-3.5 h-3.5" /> Reupload
-                                </button>
-                                <div className="w-px h-4 bg-[#2a3143] mx-1"></div>
-                                <button onClick={() => handleDeleteScript(project.id, script.id)} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all">
-                                  <Trash2 className="w-3.5 h-3.5" /> Delete
-                                </button>
-                              </div>
                             </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {projects.length === 0 && (
-                  <div className="text-center py-16 border-2 border-dashed border-[#2a3143] rounded-2xl bg-[#151b2b]/50">
-                    <Folder className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-white mb-1">No Projects Found</h3>
-                    <p className="text-slate-400 text-sm mb-4">Create a new module to start managing your scripts.</p>
-                    <button onClick={handleCreateProject} className="text-indigo-400 hover:text-indigo-300 font-medium text-sm">Create First Project</button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ADMIN & KEYS TAB */}
-          {activeTab === 'admin' && (
-            <div className="space-y-6">
-              <div className="bg-[#151b2b]/80 backdrop-blur-md border border-[#2a3143] rounded-2xl p-6 shadow-xl">
-                <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                  <Key className="w-5 h-5 text-indigo-400" /> License Generator
-                </h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Duration (Days)</label>
-                    <select value={keyGenDuration} onChange={e=>setKeyGenDuration(e.target.value)} className="w-full bg-[#0a0d14] border border-[#2a3143] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500/50">
-                      <option value="1">1 Day</option>
-                      <option value="7">1 Week</option>
-                      <option value="30">1 Month</option>
-                      <option value="0">Lifetime</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Quantity</label>
-                    <input type="number" min="1" max="50" value={keyGenCount} onChange={e=>setKeyGenCount(e.target.value)} className="w-full bg-[#0a0d14] border border-[#2a3143] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500/50"/>
-                  </div>
-                  <div className="flex items-end">
-                    <button onClick={generateKeys} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2">
-                      <Zap className="w-4 h-4" /> Generate Licenses
-                    </button>
-                  </div>
-                </div>
-
-                <div className="border-t border-[#2a3143] pt-6">
-                  <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Active Ledger</h3>
-                  <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar pr-2">
-                    {adminKeys.length === 0 ? (
-                      <p className="text-slate-500 text-sm text-center py-4">No keys generated yet.</p>
-                    ) : (
-                      adminKeys.map((k, i) => (
-                        <div key={i} className="flex items-center justify-between bg-[#0a0d14] border border-[#2a3143] p-3 rounded-xl">
-                          <code className="text-indigo-400 font-mono text-sm">{k.key}</code>
-                          <div className="flex items-center gap-4">
-                            <span className="text-xs text-slate-500">Uses: {k.usedBy}</span>
-                            <span className={`text-xs font-bold px-2 py-1 rounded border ${k.usedBy !== 'Unclaimed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
-                              {k.usedBy !== 'Unclaimed' ? 'Active' : 'Unused'}
-                            </span>
-                          </div>
+                            <p class="text-sm text-zinc-500">Global application settings module placeholder. Everything runs locally in memory currently.</p>
                         </div>
-                      ))
-                    )}
-                  </div>
+                    </div>
+                `;
+            }
+            lucide.createIcons();
+        }
+
+        function toggleProject(id) {
+            const proj = state.projects.find(p => p.id === id);
+            if (proj) proj.expanded = !proj.expanded;
+            renderApp();
+        }
+
+        function renderProjectsList() {
+            if (state.projects.length === 0) {
+                return `
+                <div class="text-center py-24 border-2 border-dashed border-zinc-800/60 rounded-2xl bg-surface-800/30">
+                    <div class="w-16 h-16 bg-surface-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
+                        <i data-lucide="layers" class="w-8 h-8 text-zinc-500"></i>
+                    </div>
+                    <h3 class="text-lg font-medium text-white mb-1">No projects yet</h3>
+                    <p class="text-zinc-500 text-sm">Create a new project to start managing scripts.</p>
+                </div>`;
+            }
+
+            return state.projects.map(p => `
+                <div class="bg-surface-800 border border-zinc-800 rounded-xl overflow-hidden transition-all duration-300 ${p.expanded ? 'shadow-xl shadow-black/50 ring-1 ring-white/5' : 'hover:border-zinc-700'}">
+                    <div class="flex items-center justify-between p-5 cursor-pointer bg-surface-800 hover:bg-surface-700/50 transition-colors" onclick="toggleProject('${p.id}')">
+                        <div class="flex items-center gap-4">
+                            <div class="w-10 h-10 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center">
+                                <i data-lucide="box" class="text-brand-400 w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-white tracking-wide">${p.name}</h3>
+                                <div class="flex items-center gap-2 mt-0.5">
+                                    <p class="text-[11px] text-zinc-500 font-mono tracking-wider">ID: ${p.id.substring(0, 16)}...</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="event.stopPropagation(); openProjectSettings('${p.id}')" class="p-2 text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg transition-colors border border-transparent hover:border-zinc-700" title="Project Settings">
+                                <i data-lucide="settings" class="w-5 h-5"></i>
+                            </button>
+                            <div class="w-px h-6 bg-zinc-800 mx-2"></div>
+                            <i data-lucide="${p.expanded ? 'chevron-up' : 'chevron-down'}" class="text-zinc-500 w-5 h-5 transition-transform"></i>
+                        </div>
+                    </div>
+                    
+                    ${p.expanded ? `
+                    <div class="p-5 border-t border-zinc-800/80 bg-[#0a0a0c]">
+                        <div class="flex gap-3 mb-5">
+                            <button onclick="openAddScriptModal('${p.id}')" class="bg-surface-700 hover:bg-surface-700/80 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium transition-all border border-zinc-700/50 hover:border-zinc-600">
+                                <i data-lucide="file-plus-2" class="w-4 h-4 text-brand-400"></i> ADD SCRIPT
+                            </button>
+                            <button onclick="openCustomLoaderModal('${p.id}')" class="bg-surface-700 hover:bg-surface-700/80 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium transition-all border border-zinc-700/50 hover:border-zinc-600">
+                                <i data-lucide="code-2" class="w-4 h-4 text-zinc-400"></i> CUSTOM LOADER
+                            </button>
+                        </div>
+                        <div class="space-y-2">
+                            ${renderScripts(p.scripts, p.id)}
+                        </div>
+                    </div>
+                    ` : ''}
                 </div>
-              </div>
-            </div>
-          )}
+            `).join('');
+        }
 
-        </div>
-      </main>
+        function renderScripts(scripts, projectId) {
+            if (scripts.length === 0) {
+                return `<div class="text-sm text-zinc-500 text-center py-6 bg-surface-900/50 rounded-lg border border-zinc-800/30">No scripts added. Click "Add Script" to upload a .lua file.</div>`;
+            }
+            return scripts.map(s => `
+                <div class="group flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-[#121215] border border-zinc-800/80 rounded-lg hover:border-brand-500/30 transition-all">
+                    <div class="flex items-center gap-4 mb-3 sm:mb-0">
+                        <button onclick="toggleScriptStatusDirect('${projectId}', '${s.id}')" class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none transition-all" title="Toggle Script Active/Inactive">
+                            <span class="pointer-events-none absolute mx-auto h-4 w-8 rounded-full transition-colors duration-200 ease-in-out ${s.status === 'Active' ? 'bg-emerald-500/80 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'bg-zinc-700/80'}"></span>
+                            <span class="pointer-events-none absolute left-0 inline-block h-5 w-5 transform rounded-full border border-zinc-800 bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${s.status === 'Active' ? 'translate-x-4 border-emerald-500' : 'translate-x-0'}"></span>
+                        </button>
+                        <div>
+                            <div class="flex items-center gap-3">
+                                <h4 class="font-semibold text-zinc-100 text-sm ${s.status !== 'Active' ? 'opacity-50 line-through' : ''}">${s.name}</h4>
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-500/10 text-brand-400 border border-brand-500/20">${s.version}</span>
+                            </div>
+                            <div class="flex items-center gap-3 mt-1.5 text-[11px] text-zinc-400 font-medium tracking-wide">
+                                <span class="flex items-center gap-1.5 bg-surface-800 px-2 py-0.5 rounded border border-zinc-700/50"><i data-lucide="gamepad-2" class="w-3 h-3 text-zinc-500"></i> ${s.gameId}</span>
+                                <span class="flex items-center gap-1.5"><i data-lucide="calendar" class="w-3 h-3 text-zinc-500"></i> ${s.date}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <button onclick="openEditScriptModal('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-brand-400 hover:bg-brand-500/10 rounded-md transition-colors flex items-center gap-1.5 border border-transparent hover:border-brand-500/20">
+                            <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> EDIT
+                        </button>
+                        <button onclick="copyToClipboard('loadstring(game:HttpGet(\\'https://originalurl.com/${projectId}/${s.id}\\'))()', 'Copied Script Loader!')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-md transition-colors flex items-center gap-1.5 border border-transparent hover:border-emerald-500/20">
+                            <i data-lucide="copy" class="w-3.5 h-3.5"></i> COPY LOADER
+                        </button>
+                        <button onclick="deleteScript('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors flex items-center gap-1.5 border border-transparent hover:border-red-500/20">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> DELETE
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
 
-      {/* Render Modals */}
-      {renderModal()}
+        // --- Modals Management ---
+        function closeModal() {
+            document.getElementById('modal-container').innerHTML = '';
+        }
 
-      <style dangerouslySetInnerHTML={{__html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #2a3143; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #3b445c; }
-      `}} />
-    </div>
-  );
-}
+        function openCreateProjectModal() {
+            const html = `
+            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-md shadow-2xl modal-animate ring-1 ring-white/5">
+                    <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2">
+                        <i data-lucide="folder-plus" class="text-brand-400 w-5 h-5"></i> Create Project
+                    </h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Custom Project Name</label>
+                            <input type="text" id="input-cp-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition-all placeholder:text-zinc-600" placeholder="e.g. Universal Aimbot Hub">
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50">
+                        <button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg transition-colors">Cancel</button>
+                        <button id="btn-submit-project" onclick="submitCreateProject()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-all shadow-lg shadow-brand-500/20 min-w-[140px] flex items-center justify-center">Create Project</button>
+                    </div>
+                </div>
+            </div>`;
+            document.getElementById('modal-container').innerHTML = html;
+            lucide.createIcons();
+            setTimeout(() => document.getElementById('input-cp-name')?.focus(), 100);
+        }
+
+        async function submitCreateProject() {
+            const name = document.getElementById('input-cp-name').value.trim();
+            if (!name) return showToast('Please enter a project name', 'error');
+
+            const btn = document.getElementById('btn-submit-project');
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-white"></i>';
+            btn.disabled = true;
+            lucide.createIcons();
+
+            // Simulate loader delay for ID generation
+            await new Promise(r => setTimeout(r, 1200));
+
+            const id = await generateSHA256(name);
+            state.projects.push({
+                id: id,
+                name: name,
+                expanded: true,
+                loaderCode: "",
+                scripts: []
+            });
+            closeModal();
+            showToast('Project created successfully');
+            renderApp();
+        }
+
+        function openProjectSettings(projectId) {
+            const project = state.projects.find(p => p.id === projectId);
+            if (!project) return;
+
+            const html = `
+            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-md shadow-2xl modal-animate ring-1 ring-white/5">
+                    <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2">
+                        <i data-lucide="settings-2" class="text-zinc-400 w-5 h-5"></i> Project Settings
+                    </h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Change Project Name</label>
+                            <input type="text" id="input-ps-name" value="${project.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none transition-all">
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between mt-8 pt-4 border-t border-zinc-800/50">
+                        <button onclick="deleteProject('${projectId}')" class="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i> Delete Project
+                        </button>
+                        <div class="flex gap-2">
+                            <button onclick="closeModal()" class="px-4 py-2.5 text-sm font-medium text-zinc-400 hover:text-white rounded-lg transition-colors">Cancel</button>
+                            <button onclick="saveProjectSettings('${projectId}')" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-all shadow-lg shadow-brand-500/20">Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+            document.getElementById('modal-container').innerHTML = html;
+            lucide.createIcons();
+        }
+
+        function saveProjectSettings(projectId) {
+            const name = document.getElementById('input-ps-name').value.trim();
+            if (!name) return showToast('Project name cannot be empty', 'error');
+            
+            const project = state.projects.find(p => p.id === projectId);
+            if (project) project.name = name;
+            
+            closeModal();
+            showToast('Project updated');
+            renderApp();
+        }
+
+        function deleteProject(projectId) {
+            state.projects = state.projects.filter(p => p.id !== projectId);
+            closeModal();
+            showToast('Project deleted successfully');
+            renderApp();
+        }
+
+        function openAddScriptModal(projectId) {
+            state.draftScript = { projectId, file: null };
+            
+            const html = `
+            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+                <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-lg shadow-2xl modal-animate ring-1 ring-white/5 my-8">
+                    <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2">
+                        <i data-lucide="file-code" class="text-brand-400 w-5 h-5"></i> Add New Script
+                    </h3>
+                    <div class="space-y-5">
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Custom Script Name</label>
+                            <input type="text" id="input-as-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none transition-all placeholder:text-zinc-600" placeholder="e.g. ESP & Wallhack">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Roblox Game ID <span class="text-zinc-500 font-normal lowercase tracking-normal">(game.GameId)</span></label>
+                            <input type="text" id="input-as-gameid" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none transition-all placeholder:text-zinc-600 font-mono" placeholder="123456789">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Upload File <span class="text-zinc-500 font-normal normal-case">(.lua only)</span></label>
+                            <div id="drop-zone" class="border-2 border-dashed border-zinc-700 rounded-xl p-8 text-center bg-[#0a0a0c] hover:bg-surface-800 hover:border-brand-500/50 transition-all cursor-pointer relative group">
+                                <input type="file" accept=".lua" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)">
+                                <div class="bg-surface-800 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                                    <i data-lucide="upload-cloud" class="w-6 h-6 text-brand-400"></i>
+                                </div>
+                                <p class="text-sm text-zinc-300 font-medium" id="drop-text">Drag & drop your file here</p>
+                                <p class="text-xs text-zinc-500 mt-1">or click to browse</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50">
+                        <button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white rounded-lg transition-colors">Cancel</button>
+                        <button id="btn-submit-script" onclick="submitAddScript()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-all shadow-lg shadow-brand-500/20 min-w-[140px] flex items-center justify-center">Upload Script</button>
+                    </div>
+                </div>
+            </div>`;
+            document.getElementById('modal-container').innerHTML = html;
+            lucide.createIcons();
+            setupDragDrop();
+        }
+
+        async function submitAddScript() {
+            const name = document.getElementById('input-as-name').value.trim();
+            const gameId = document.getElementById('input-as-gameid').value.trim();
+            const file = state.draftScript.file;
+
+            if(!name) return showToast('Script name is required', 'error');
+            if(!gameId) return showToast('Game ID is required', 'error');
+            if(!file) return showToast('Please select a .lua file to upload', 'error');
+
+            const project = state.projects.find(p => p.id === state.draftScript.projectId);
+            if(project) {
+                const btn = document.getElementById('btn-submit-script');
+                btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-white"></i>';
+                btn.disabled = true;
+                lucide.createIcons();
+
+                // Simulate loader delay before finishing upload
+                await new Promise(r => setTimeout(r, 1500));
+
+                // Generate a unique SHA256 script ID
+                const scriptId = await generateSHA256(name + gameId + "script");
+                
+                project.scripts.push({
+                    id: scriptId,
+                    name: name,
+                    gameId: gameId,
+                    status: 'Active',
+                    version: 'v0.0.1',
+                    date: getShortDate(),
+                    fileName: file.name
+                });
+                closeModal();
+                showToast('Script uploaded successfully');
+                renderApp();
+            }
+        }
+
+        function openEditScriptModal(projectId, scriptId) {
+            const project = state.projects.find(p => p.id === projectId);
+            const script = project.scripts.find(s => s.id === scriptId);
+
+            const html = `
+            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-lg shadow-2xl modal-animate ring-1 ring-white/5">
+                    <div class="flex justify-between items-center mb-5">
+                        <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                            <i data-lucide="edit" class="text-brand-400 w-5 h-5"></i> Edit Script
+                        </h3>
+                        <span class="px-2.5 py-1 rounded text-xs font-bold bg-brand-500/10 text-brand-400 border border-brand-500/20">${script.version}</span>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between bg-[#0a0a0c] p-4 rounded-xl border border-zinc-700">
+                            <div>
+                                <p class="text-sm font-bold text-white">Script Status</p>
+                                <p class="text-xs text-zinc-500">Toggle active state for users</p>
+                            </div>
+                            <button onclick="toggleScriptStatus('${projectId}', '${scriptId}')" class="px-4 py-1.5 rounded-md text-xs font-bold transition-colors ${script.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20'}">
+                                ${script.status}
+                            </button>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Script Name</label>
+                            <input type="text" id="input-es-name" value="${script.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Game ID</label>
+                            <input type="text" id="input-es-gameid" value="${script.gameId}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Reupload File <span class="text-brand-400 font-normal normal-case">(.lua only - Bumps Version)</span></label>
+                            <input type="file" id="input-es-file" accept=".lua" class="w-full text-sm text-zinc-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-surface-700 file:text-white hover:file:bg-surface-600 bg-[#0a0a0c] border border-zinc-700 rounded-lg outline-none cursor-pointer">
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50">
+                        <button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white rounded-lg transition-colors">Cancel</button>
+                        <button onclick="saveEditScript('${projectId}', '${scriptId}')" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-all shadow-lg shadow-brand-500/20">Save Changes</button>
+                    </div>
+                </div>
+            </div>`;
+            document.getElementById('modal-container').innerHTML = html;
+            lucide.createIcons();
+        }
+
+        function toggleScriptStatus(projectId, scriptId) {
+            const project = state.projects.find(p => p.id === projectId);
+            const script = project.scripts.find(s => s.id === scriptId);
+            script.status = script.status === 'Active' ? 'Inactive' : 'Active';
+            openEditScriptModal(projectId, scriptId);
+        }
+
+        function toggleScriptStatusDirect(projectId, scriptId) {
+            const project = state.projects.find(p => p.id === projectId);
+            if (!project) return;
+            const script = project.scripts.find(s => s.id === scriptId);
+            if (!script) return;
+            
+            script.status = script.status === 'Active' ? 'Inactive' : 'Active';
+            renderApp();
+            showToast(`Script ${script.status === 'Active' ? 'enabled' : 'disabled'}`);
+        }
+
+        function saveEditScript(projectId, scriptId) {
+            const project = state.projects.find(p => p.id === projectId);
+            const script = project.scripts.find(s => s.id === scriptId);
+
+            const newName = document.getElementById('input-es-name').value.trim();
+            const newGameId = document.getElementById('input-es-gameid').value.trim();
+            const fileInput = document.getElementById('input-es-file');
+
+            if(!newName || !newGameId) return showToast('Name and Game ID cannot be empty', 'error');
+
+            script.name = newName;
+            script.gameId = newGameId;
+
+            if(fileInput.files && fileInput.files.length > 0) {
+                // Bypass bracket bug using .item(0)
+                const file = fileInput.files.item(0); 
+                if(file && file.name && file.name.toLowerCase().endsWith('.lua')) {
+                    script.version = incrementVersion(script.version);
+                    script.fileName = file.name;
+                    script.date = getShortDate();
+                } else {
+                    return showToast('Only .lua files are permitted', 'error');
+                }
+            }
+
+            closeModal();
+            showToast('Script updated successfully');
+            renderApp();
+        }
+
+        function deleteScript(projectId, scriptId) {
+            const project = state.projects.find(p => p.id === projectId);
+            if(project) {
+                project.scripts = project.scripts.filter(s => s.id !== scriptId);
+                showToast('Script deleted successfully');
+                renderApp();
+            }
+        }
+
+        function openCustomLoaderModal(projectId) {
+            const project = state.projects.find(p => p.id === projectId);
+            if (!project) return;
+            
+            const currentCode = project.loaderCode || "";
+
+            const html = `
+            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div class="bg-[#111113] border border-zinc-800/80 p-0 rounded-2xl w-full max-w-3xl shadow-2xl modal-animate ring-1 ring-white/5 overflow-hidden flex flex-col">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-800/80 bg-surface-900/50">
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i data-lucide="code" class="text-zinc-400 w-4 h-4"></i> Loader Code (Lua)
+                        </h3>
+                        <div class="flex items-center gap-2">
+                            <button onclick="copyLoaderCode()" class="px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-white bg-surface-800 hover:bg-surface-700 rounded-md transition-colors border border-zinc-700/50">
+                                Copy Loader
+                            </button>
+                            <button onclick="autoGenerateLoader('${projectId}')" class="px-3 py-1.5 text-xs font-medium text-brand-400 hover:text-brand-300 bg-brand-500/10 hover:bg-brand-500/20 rounded-md transition-colors border border-brand-500/20">
+                                Auto Generate
+                            </button>
+                            <button onclick="saveLoaderCode('${projectId}')" class="px-3 py-1.5 text-xs font-medium text-white bg-brand-600 hover:bg-brand-500 rounded-md transition-colors shadow-lg shadow-brand-500/20">
+                                Save
+                            </button>
+                            <div class="w-px h-4 bg-zinc-800 mx-1"></div>
+                            <button onclick="closeModal()" class="p-1.5 text-zinc-500 hover:text-white rounded-md transition-colors">
+                                <i data-lucide="x" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-4 bg-[#0a0a0c]">
+                        <textarea id="loader-code-textarea">${currentCode}</textarea>
+                    </div>
+                </div>
+            </div>`;
+            document.getElementById('modal-container').innerHTML = html;
+            lucide.createIcons();
+
+            setTimeout(() => {
+                const textarea = document.getElementById('loader-code-textarea');
+                if (textarea) {
+                    window.loaderEditor = CodeMirror.fromTextArea(textarea, {
+                        mode: 'lua',
+                        theme: 'sanctuary',
+                        lineNumbers: false,
+                        matchBrackets: true,
+                        indentUnit: 4
+                    });
+                }
+            }, 10);
+        }
+
+        function autoGenerateLoader(projectId) {
+            if (window.loaderEditor) {
+                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n}\n\nlocal Script = Scripts[game.GameId]\nif Script then\n    loadstring(game:HttpGet(Script))()\nelse\n    -- For the user to decide\nend`);
+                showToast('Auto-generated loader template');
+            }
+        }
+
+        function copyLoaderCode() {
+            if (window.loaderEditor) {
+                const code = window.loaderEditor.getValue();
+                if (code.trim()) {
+                    copyToClipboard(code, 'Loader code copied to clipboard!');
+                } else {
+                    showToast('Nothing to copy', 'error');
+                }
+            }
+        }
+
+        function saveLoaderCode(projectId) {
+            const project = state.projects.find(p => p.id === projectId);
+            if (project && window.loaderEditor) {
+                project.loaderCode = window.loaderEditor.getValue();
+                closeModal();
+                showToast('Loader code saved successfully');
+            }
+        }
+
+        // Initialize App
+        renderApp();
+    </script>
+</body>
+</html>
