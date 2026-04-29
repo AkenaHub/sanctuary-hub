@@ -347,7 +347,7 @@
                         <button onclick="openEditScriptModal('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-brand-400 hover:bg-brand-500/10 rounded-md transition-colors flex items-center gap-1.5 border border-transparent hover:border-brand-500/20">
                             <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> EDIT
                         </button>
-                        <button onclick="copyToClipboard('loadstring(game:HttpGet(\\'https://originalurl.com/${projectId}/${s.id}\\'))()', 'Copied Script Loader!')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-md transition-colors flex items-center gap-1.5 border border-transparent hover:border-emerald-500/20">
+                        <button onclick="copyToClipboard('loadstring(game:HttpGet(\\'${window.location.origin}/${projectId}/${s.id}\\'))()', 'Copied Script Loader!')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-md transition-colors flex items-center gap-1.5 border border-transparent hover:border-emerald-500/20">
                             <i data-lucide="copy" class="w-3.5 h-3.5"></i> COPY LOADER
                         </button>
                         <button onclick="deleteScript('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors flex items-center gap-1.5 border border-transparent hover:border-red-500/20">
