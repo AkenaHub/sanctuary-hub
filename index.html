@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Luau-Auth | Script Manager</title>
+    <title>Sanctuary | Script Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
@@ -34,7 +34,7 @@
         .toast-enter { animation: toastEnter 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
         .toast-leave { animation: toastLeave 0.3s cubic-bezier(0.5, 0, 0.2, 1) forwards; }
         .modal-animate { animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .cm-s-luauauth.CodeMirror { background: #121215; color: #e2e8f0; border-radius: 0.75rem; padding: 1.25rem; font-family: monospace; font-size: 13px; line-height: 1.6; border: 1px solid rgba(39, 39, 42, 0.8); height: 320px; transition: all 0.3s ease; }
+        .cm-s-sanctuary.CodeMirror { background: #121215; color: #e2e8f0; border-radius: 0.75rem; padding: 1.25rem; font-family: monospace; font-size: 13px; line-height: 1.6; border: 1px solid rgba(39, 39, 42, 0.8); height: 320px; transition: all 0.3s ease; }
         button, div, input, select { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         button:hover { transform: translateY(-1px); }
         button:active { transform: translateY(1px); }
@@ -68,8 +68,8 @@
         </div>
     </aside>
 
-    <main class="flex-1 overflow-y-auto relative bg-[#030303] flex flex-col transition-all duration-500">
-        <div id="main-content" class="p-8 max-w-6xl mx-auto flex-1 w-full">
+    <main class="flex-1 overflow-y-auto relative bg-[#030303] flex flex-col transition-all duration-500 w-full">
+        <div id="main-content" class="p-4 sm:p-8 max-w-6xl mx-auto flex-1 w-full overflow-x-hidden">
             <div class="flex items-center justify-center h-full">
                 <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-brand-500"></i>
             </div>
@@ -332,7 +332,7 @@
                     </div>
                 </div>
 
-                <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 modal-animate hover:border-brand-500/30">
+                <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 modal-animate hover:border-brand-500/30 w-full overflow-hidden">
                     <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-4 h-4 text-brand-400"></i> Execution History</h3>
                     <div class="h-[400px] w-full relative">
                         <canvas id="executionChart"></canvas>
@@ -418,33 +418,33 @@
             const projectOptions = state.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
             
             mainContainer.innerHTML = `
-                <div class="max-w-6xl mx-auto modal-animate">
+                <div class="max-w-6xl mx-auto modal-animate w-full overflow-hidden">
                     <div class="flex justify-between items-center mb-8">
                         <div><h2 class="text-3xl font-bold text-white tracking-tight">HWID Keys</h2><p class="text-zinc-500 text-sm mt-1">Generate and manage access keys for your locked projects.</p></div>
                     </div>
                     
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 mb-8 hover:border-zinc-700">
-                        <div class="flex gap-4 items-end">
-                            <div class="flex-1">
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-4 sm:p-6 mb-8 hover:border-zinc-700 w-full">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                            <div>
                                 <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Select Project</label>
                                 <select id="hwid-proj-select" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none" onchange="renderHWIDTable()">
                                     ${projectOptions || '<option disabled selected>No projects created</option>'}
                                 </select>
                             </div>
-                            <div class="flex-1">
+                            <div>
                                 <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">User Note / Discord ID</label>
                                 <input type="text" id="hwid-note" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none" placeholder="e.g. buyer_discord">
                             </div>
-                            <div class="w-32">
+                            <div>
                                 <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Days</label>
                                 <input type="number" id="hwid-days" value="30" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none">
                             </div>
-                            <button onclick="generateProjectHWIDKey()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-3 rounded-lg text-sm font-medium shadow-lg min-w-[140px] h-[50px]" ${state.projects.length === 0 ? 'disabled' : ''}>Create Key</button>
+                            <button onclick="generateProjectHWIDKey()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-3 rounded-lg text-sm font-medium shadow-lg w-full h-[50px] transition-transform" ${state.projects.length === 0 ? 'disabled' : ''}>Create Key</button>
                         </div>
                     </div>
 
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-700">
-                        <table class="w-full text-left text-sm">
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl overflow-x-auto hover:border-zinc-700 w-full block">
+                        <table class="w-full text-left text-sm whitespace-nowrap">
                             <thead class="bg-surface-900/50 border-b border-zinc-800 text-zinc-400">
                                 <tr><th class="p-4 font-medium">Script Key</th><th class="p-4 font-medium">Note</th><th class="p-4 font-medium">HWID Status</th><th class="p-4 font-medium">Expires</th><th class="p-4 font-medium text-right">Actions</th></tr>
                             </thead>
@@ -497,7 +497,7 @@
             if (!project) return;
             
             const newKey = {
-                key: generateHWIDKey(), note: note, hwid: null, lastReset: 0,
+                key: generateHWIDKey(), note: note, hwid: null, ip: null, lastReset: 0,
                 expiresAt: Date.now() + (parseInt(days) * 24 * 60 * 60 * 1000)
             };
             
@@ -520,10 +520,10 @@
                 return showToast(`Cooldown active. Try again in ${hoursLeft} hours.`, 'error');
             }
             
-            const oldHwid = k.hwid; const oldReset = k.lastReset;
-            k.hwid = null; k.lastReset = Date.now();
+            const oldHwid = k.hwid; const oldIp = k.ip; const oldReset = k.lastReset;
+            k.hwid = null; k.ip = null; k.lastReset = Date.now();
             try { await syncToServer(); showToast('HWID Reset successfully'); renderHWIDTable(); } 
-            catch(e) { k.hwid = oldHwid; k.lastReset = oldReset; }
+            catch(e) { k.hwid = oldHwid; k.ip = oldIp; k.lastReset = oldReset; }
         }
 
         async function deleteHWIDKey(projId, keyStr) {
@@ -550,12 +550,12 @@
 
         function renderRegister(mainContainer) {
             mainContainer.innerHTML = `
-                <div class="max-w-6xl mx-auto modal-animate">
+                <div class="max-w-6xl mx-auto modal-animate w-full overflow-hidden">
                     <div class="flex justify-between items-center mb-8">
                         <div><h2 class="text-3xl font-bold text-white tracking-tight">Key Management</h2><p class="text-zinc-500 text-sm mt-1">Admin control over user access keys.</p></div>
                         <div class="flex gap-2">
                             <input type="number" id="input-admin-days" value="30" class="w-24 bg-[#0a0a0c] border border-zinc-700 rounded-lg p-2.5 text-white focus:border-brand-500 outline-none text-sm" placeholder="Days">
-                            <button onclick="generateApiKey()" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg min-w-[140px] flex items-center justify-center">Generate Key</button>
+                            <button onclick="generateApiKey()" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg min-w-[140px] flex items-center justify-center transition-transform">Generate Key</button>
                         </div>
                     </div>
                     
@@ -564,8 +564,8 @@
                         <button onclick="copyToClipboard(document.getElementById('admin-new-key').innerText, 'Key Copied!')" class="bg-surface-800 hover:bg-surface-700 text-white px-4 py-2 rounded-lg text-sm font-medium border border-zinc-700/50">Copy</button>
                     </div>
 
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-700">
-                        <table class="w-full text-left text-sm">
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl overflow-x-auto hover:border-zinc-700 w-full block">
+                        <table class="w-full text-left text-sm whitespace-nowrap min-w-max">
                             <thead class="bg-surface-900/50 border-b border-zinc-800 text-zinc-400">
                                 <tr><th class="p-4 font-medium">API Key</th><th class="p-4 font-medium">Claimed By</th><th class="p-4 font-medium">Expires In</th><th class="p-4 font-medium text-right">Actions</th></tr>
                             </thead>
@@ -651,16 +651,16 @@
 
         function renderSettings(mainContainer) {
             mainContainer.innerHTML = `
-                <div class="max-w-2xl modal-animate">
+                <div class="max-w-2xl modal-animate w-full">
                     <h2 class="text-3xl font-bold text-white tracking-tight mb-8">Settings</h2>
                     
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700">
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 w-full">
                         <h3 class="text-lg font-bold text-white flex items-center gap-2 mb-4"><i data-lucide="key" class="w-5 h-5"></i> Access Configuration</h3>
                         <div>
                             <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Your API Key ${state.user.isAdmin ? '(Not needed for Admins)' : ''}</label>
-                            <div class="flex gap-3">
-                                <input type="password" id="input-user-apikey" value="${state.apiKey}" class="flex-1 bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono placeholder:text-zinc-700" placeholder="xxxxxxxxxxxx" ${state.user.isAdmin ? 'disabled' : ''}>
-                                <button onclick="saveApiKey()" class="bg-surface-700 hover:bg-surface-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium border border-zinc-700/50" ${state.user.isAdmin ? 'hidden' : ''}>Save & Link Key</button>
+                            <div class="flex gap-3 flex-wrap sm:flex-nowrap">
+                                <input type="password" id="input-user-apikey" value="${state.apiKey}" class="flex-1 min-w-[200px] w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono placeholder:text-zinc-700" placeholder="xxxxxxxxxxxx" ${state.user.isAdmin ? 'disabled' : ''}>
+                                <button onclick="saveApiKey()" class="bg-surface-700 hover:bg-surface-600 text-white px-6 py-3 sm:py-2.5 rounded-lg text-sm font-medium border border-zinc-700/50 w-full sm:w-auto" ${state.user.isAdmin ? 'hidden' : ''}>Save & Link Key</button>
                             </div>
                             <p class="text-xs text-zinc-500 mt-2">API Keys are required to upload or edit scripts. Contact an Admin if you need a key.</p>
                         </div>
@@ -683,11 +683,11 @@
         }
 
         function renderProjectsList() {
-            if (state.projects.length === 0) return `<div class="text-center py-24 border-2 border-dashed border-zinc-800/60 rounded-2xl bg-surface-800/30"><h3 class="text-lg font-medium text-white">No projects yet</h3></div>`;
+            if (state.projects.length === 0) return `<div class="text-center py-24 border-2 border-dashed border-zinc-800/60 rounded-2xl bg-surface-800/30 w-full"><h3 class="text-lg font-medium text-white">No projects yet</h3></div>`;
 
             return state.projects.map(p => `
-                <div class="bg-surface-800 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-700 ${p.expanded ? 'shadow-xl shadow-black/50 ring-1 ring-brand-500/20' : ''}">
-                    <div class="flex items-center justify-between p-5 cursor-pointer bg-surface-800 hover:bg-surface-700/50" onclick="toggleProject('${p.id}')">
+                <div class="bg-surface-800 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-700 ${p.expanded ? 'shadow-xl shadow-black/50 ring-1 ring-brand-500/20' : ''} w-full block">
+                    <div class="flex items-center justify-between p-5 cursor-pointer bg-surface-800 hover:bg-surface-700/50 transition-colors" onclick="toggleProject('${p.id}')">
                         <div class="flex items-center gap-4">
                             <div class="w-10 h-10 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center transition-transform ${p.expanded ? 'scale-110' : ''}"><i data-lucide="box" class="text-brand-400 w-5 h-5"></i></div>
                             <div>
@@ -702,21 +702,21 @@
                         </div>
                     </div>
                     ${p.expanded ? `
-                    <div class="p-5 border-t border-zinc-800/80 bg-[#0a0a0c] modal-animate">
-                        <div class="flex gap-3 mb-5">
-                            <button onclick="openAddScriptModal('${p.id}')" class="bg-surface-700 hover:bg-surface-600 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium border border-zinc-700/50"><i data-lucide="file-plus-2" class="w-4 h-4 text-brand-400"></i> ADD SCRIPT</button>
-                            <button onclick="openCustomLoaderModal('${p.id}')" class="bg-surface-700 hover:bg-surface-600 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium border border-zinc-700/50"><i data-lucide="code-2" class="w-4 h-4 text-zinc-400"></i> CUSTOM LOADER</button>
+                    <div class="p-4 sm:p-5 border-t border-zinc-800/80 bg-[#0a0a0c] modal-animate w-full overflow-x-auto">
+                        <div class="flex gap-3 mb-5 flex-wrap sm:flex-nowrap">
+                            <button onclick="openAddScriptModal('${p.id}')" class="bg-surface-700 hover:bg-surface-600 text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-medium border border-zinc-700/50 w-full sm:w-auto"><i data-lucide="file-plus-2" class="w-4 h-4 text-brand-400"></i> ADD SCRIPT</button>
+                            <button onclick="openCustomLoaderModal('${p.id}')" class="bg-surface-700 hover:bg-surface-600 text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-medium border border-zinc-700/50 w-full sm:w-auto"><i data-lucide="code-2" class="w-4 h-4 text-zinc-400"></i> CUSTOM LOADER</button>
                         </div>
-                        <div class="space-y-2">${renderScripts(p.scripts, p.id)}</div>
+                        <div class="space-y-2 w-full min-w-[500px]">${renderScripts(p.scripts, p.id)}</div>
                     </div>` : ''}
                 </div>
             `).join('');
         }
 
         function renderScripts(scripts, projectId) {
-            if (scripts.length === 0) return `<div class="text-sm text-zinc-500 text-center py-6 bg-surface-900/50 rounded-lg border border-zinc-800/30">No scripts added</div>`;
+            if (scripts.length === 0) return `<div class="text-sm text-zinc-500 text-center py-6 bg-surface-900/50 rounded-lg border border-zinc-800/30 w-full">No scripts added</div>`;
             return scripts.map(s => `
-                <div class="group flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-[#121215] border border-zinc-800/80 rounded-lg hover:border-brand-500/30 hover:translate-x-1">
+                <div class="group flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-[#121215] border border-zinc-800/80 rounded-lg hover:border-brand-500/30 hover:translate-x-1 w-full block">
                     <div class="flex items-center gap-4 mb-3 sm:mb-0">
                         <button onclick="toggleScriptStatusDirect('${projectId}', '${s.id}')" class="relative inline-flex h-[22px] w-[42px] flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] ${s.status === 'Active' ? 'border-[#272a54] bg-[#0a0a0c]' : 'border-zinc-800 bg-[#0a0a0c]'}" title="Toggle Active">
                             <span class="pointer-events-none absolute left-[2px] inline-block h-[15px] w-[15px] transform rounded-full transition-all duration-300 ease-in-out ${s.status === 'Active' ? 'translate-x-[19px] bg-[#515dfa]' : 'translate-x-0 bg-zinc-600'}"></span>
@@ -733,7 +733,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                    <div class="flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity flex-wrap sm:flex-nowrap">
                         <button onclick="openEditScriptModal('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-brand-400 hover:bg-brand-500/10 rounded-md flex items-center gap-1.5"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i> EDIT</button>
                         <button onclick="copyToClipboard('loadstring(game:HttpGet(\\'${window.location.origin}/raw/${projectId}/${s.id}\\'))()', 'Copied Script Loader!')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-md flex items-center gap-1.5"><i data-lucide="copy" class="w-3.5 h-3.5"></i> COPY LOADER</button>
                         <button onclick="deleteScript('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-md flex items-center gap-1.5"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> DELETE</button>
@@ -749,10 +749,10 @@
             <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-md shadow-2xl modal-animate ring-1 ring-white/5">
                     <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2"><i data-lucide="folder-plus" class="text-brand-400 w-5 h-5"></i> Create Project</h3>
-                    <div class="space-y-4"><div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Custom Project Name</label><input type="text" id="input-cp-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div></div>
+                    <div class="space-y-4"><div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Custom Project Name</label><input type="text" id="input-cp-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none transition-colors"></div></div>
                     <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50">
                         <button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg">Cancel</button>
-                        <button onclick="submitCreateProject()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium shadow-lg min-w-[140px]">Create</button>
+                        <button id="btn-submit-project" onclick="submitCreateProject()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium shadow-lg min-w-[140px]">Create</button>
                     </div>
                 </div>
             </div>`;
@@ -782,11 +782,11 @@
                         </div>
                         <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">HWID Reset Cooldown (Hours)</label><input type="number" id="input-ps-cooldown" value="${project.hwidResetCooldown || 24}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
                     </div>
-                    <div class="flex items-center justify-between mt-8 pt-4 border-t border-zinc-800/50">
-                        <button onclick="deleteProject('${projectId}')" class="text-red-400 hover:bg-red-500/10 px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete Project</button>
-                        <div class="flex gap-2">
-                            <button onclick="closeModal()" class="px-4 py-2.5 text-sm text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg">Cancel</button>
-                            <button onclick="saveProjectSettings('${projectId}')" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium">Save</button>
+                    <div class="flex items-center justify-between mt-8 pt-4 border-t border-zinc-800/50 flex-wrap sm:flex-nowrap gap-4">
+                        <button onclick="deleteProject('${projectId}')" class="text-red-400 hover:bg-red-500/10 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-medium w-full sm:w-auto"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete Project</button>
+                        <div class="flex gap-2 w-full sm:w-auto">
+                            <button onclick="closeModal()" class="flex-1 px-4 py-2.5 text-sm text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg">Cancel</button>
+                            <button onclick="saveProjectSettings('${projectId}')" class="flex-1 bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium">Save</button>
                         </div>
                     </div>
                 </div>
@@ -858,7 +858,7 @@
                         document.getElementById('drop-text').innerHTML = `<span class="text-emerald-400 font-semibold bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">${file.name}</span>`;
                     };
                     reader.readAsText(file);
-                } else { showToast('Only .lua files', 'error'); }
+                } else { showToast('Only .lua files are permitted', 'error'); }
             }
         }
         function setupDragDrop() {
@@ -973,17 +973,17 @@
             const project = state.projects.find(p => p.id === projectId);
             document.getElementById('modal-container').innerHTML = `
             <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <div class="bg-[#111113] border border-zinc-800/80 p-0 rounded-2xl w-full max-w-3xl shadow-2xl modal-animate overflow-hidden">
-                    <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-800/80 bg-surface-900/50">
+                <div class="bg-[#111113] border border-zinc-800/80 p-0 rounded-2xl w-full max-w-3xl shadow-2xl modal-animate overflow-hidden flex flex-col">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-800/80 bg-surface-900/50 flex-wrap sm:flex-nowrap gap-2">
                         <h3 class="text-sm font-bold text-white flex items-center gap-2"><i data-lucide="code" class="text-zinc-400 w-4 h-4"></i> Loader Code (Lua)</h3>
-                        <div class="flex items-center gap-2">
-                            <button onclick="copyLoaderLink('${projectId}')" class="px-3 py-1.5 text-xs text-zinc-300 hover:text-white bg-surface-800 rounded-md border border-zinc-700/50">Copy URL</button>
-                            <button onclick="autoGenerateLoader('${projectId}')" class="px-3 py-1.5 text-xs text-brand-400 bg-brand-500/10 rounded-md border border-brand-500/20">Auto Generate</button>
-                            <button onclick="saveLoaderCode('${projectId}')" class="px-3 py-1.5 text-xs text-white bg-brand-600 rounded-md shadow-lg shadow-brand-500/20">Save</button>
+                        <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                            <button onclick="copyLoaderLink('${projectId}')" class="px-3 py-1.5 text-xs text-zinc-300 hover:text-white bg-surface-800 rounded-md border border-zinc-700/50 flex-1 sm:flex-none">Copy URL</button>
+                            <button onclick="autoGenerateLoader('${projectId}')" class="px-3 py-1.5 text-xs text-brand-400 bg-brand-500/10 rounded-md border border-brand-500/20 flex-1 sm:flex-none">Auto Gen</button>
+                            <button onclick="saveLoaderCode('${projectId}')" class="px-3 py-1.5 text-xs text-white bg-brand-600 rounded-md shadow-lg shadow-brand-500/20 flex-1 sm:flex-none">Save</button>
                             <button onclick="closeModal()" class="p-1.5 text-zinc-500 hover:text-white rounded-md ml-2"><i data-lucide="x" class="w-4 h-4"></i></button>
                         </div>
                     </div>
-                    <div class="p-4 bg-[#0a0a0c]"><textarea id="loader-code-textarea">${project.loaderCode || ""}</textarea></div>
+                    <div class="p-4 bg-[#0a0a0c] flex-1 min-h-[300px]"><textarea id="loader-code-textarea">${project.loaderCode || ""}</textarea></div>
                 </div>
             </div>`;
             lucide.createIcons();
@@ -1002,7 +1002,7 @@
                 }
                 let authSnippet = project.freeMode === false ? `\nlocal AuthKey = getgenv().script_key or ""\nlocal hwid = (gethwid and gethwid()) or game:GetService("RbxAnalyticsService"):GetClientId()\n` : "";
                 let callSnippet = project.freeMode === false ? `loadstring(game:HttpGet(Script .. "?key=" .. AuthKey .. "&hwid=" .. hwid))()` : `loadstring(game:HttpGet(Script))()`;
-                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\n\nlocal Script = Scripts[game.GameId] or Scripts["Universal"]\nif Script then${authSnippet}\n    ${callSnippet}\nelse\n    warn("Luau-Auth: No script found")\nend`);
+                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\n\nlocal Script = Scripts[game.GameId] or Scripts["Universal"]\nif Script then${authSnippet}\n    ${callSnippet}\nelse\n    warn("Luau-Auth: No valid script found for this game.")\nend`);
             }
         }
 
