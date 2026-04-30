@@ -17,7 +17,9 @@ const ADMIN_IDS = ["1284247278957367337", "1282859051092414586"];
 // These should be set in your Railway Environment Variables
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || "1499199968135876608";
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || "zAoxnpFlqfOgbN1fT8ZloyQgE9j6UzjG"; 
-const REDIRECT_URI = process.env.REDIRECT_URI || "https://sanctuary-hub-production.up.railway.app/api/auth/callback";
+
+// FIXED: Updated the redirect link to match your new Luau-Auth domain!
+const REDIRECT_URI = process.env.REDIRECT_URI || "https://luau-auth-production.up.railway.app/api/auth/callback";
 
 // --- Database Helpers ---
 const readDB = () => {
