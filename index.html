@@ -30,16 +30,19 @@
         ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
         @keyframes toastEnter { 0% { transform: translateX(100%) scale(0.9); opacity: 0; } 100% { transform: translateX(0) scale(1); opacity: 1; } }
         @keyframes toastLeave { 0% { transform: translateX(0) scale(1); opacity: 1; } 100% { transform: translateX(100%) scale(0.9); opacity: 0; } }
-        @keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
         .toast-enter { animation: toastEnter 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
         .toast-leave { animation: toastLeave 0.3s cubic-bezier(0.5, 0, 0.2, 1) forwards; }
-        .modal-animate { animation: fadeIn 0.2s ease-out forwards; }
-        .cm-s-luauauth.CodeMirror { background: #121215; color: #e2e8f0; border-radius: 0.75rem; padding: 1.25rem; font-family: monospace; font-size: 13px; line-height: 1.6; border: 1px solid rgba(39, 39, 42, 0.8); height: 320px; }
+        .modal-animate { animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .cm-s-luauauth.CodeMirror { background: #121215; color: #e2e8f0; border-radius: 0.75rem; padding: 1.25rem; font-family: monospace; font-size: 13px; line-height: 1.6; border: 1px solid rgba(39, 39, 42, 0.8); height: 320px; transition: all 0.3s ease; }
+        button { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        button:hover { transform: translateY(-1px); }
+        button:active { transform: translateY(1px); }
     </style>
 </head>
 <body class="bg-black text-zinc-100 font-sans h-screen flex overflow-hidden selection:bg-brand-500/30">
 
-    <aside id="main-sidebar" class="w-64 bg-surface-900 border-r border-zinc-800 flex flex-col z-10 shadow-2xl hidden">
+    <aside id="main-sidebar" class="w-64 bg-surface-900 border-r border-zinc-800 flex flex-col z-10 shadow-2xl hidden transition-all duration-500">
         <div class="p-6 border-b border-zinc-800/50">
             <h1 class="text-xl font-bold text-white flex items-center gap-3"><div class="p-1.5 bg-brand-500/20 rounded-md"><i data-lucide="shield" class="text-brand-500 w-5 h-5"></i></div>Luau-Auth</h1>
         </div>
@@ -47,28 +50,28 @@
         <div id="user-profile-area" class="p-4 border-b border-zinc-800/50"></div>
 
         <nav id="sidebar-nav" class="flex-1 p-4 space-y-1">
-            <button onclick="setTab('dashboard')" id="tab-dashboard" class="w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium">
+            <button onclick="setTab('dashboard')" id="tab-dashboard" class="w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium">
                 <i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard
             </button>
-            <button onclick="setTab('projects')" id="tab-projects" class="w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium">
+            <button onclick="setTab('projects')" id="tab-projects" class="w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium">
                 <i data-lucide="folder" class="w-5 h-5"></i> Projects
             </button>
-            <button onclick="setTab('register')" id="tab-register" class="w-full items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium hidden">
+            <button onclick="setTab('register')" id="tab-register" class="w-full items-center gap-3 px-4 py-3 rounded-md text-sm font-medium hidden">
                 <i data-lucide="users" class="w-5 h-5"></i> Register
             </button>
-            <button onclick="setTab('settings')" id="tab-settings" class="w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium">
+            <button onclick="setTab('settings')" id="tab-settings" class="w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium">
                 <i data-lucide="settings" class="w-5 h-5"></i> Settings
             </button>
         </nav>
         
         <div id="logout-container" class="p-4 border-t border-zinc-800/50 hidden">
-            <button onclick="openLogoutModal()" class="w-full flex items-center gap-3 px-4 py-3 rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-all text-sm font-medium">
+            <button onclick="openLogoutModal()" class="w-full flex items-center gap-3 px-4 py-3 rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 text-sm font-medium">
                 <i data-lucide="log-out" class="w-5 h-5"></i> Logout
             </button>
         </div>
     </aside>
 
-    <main class="flex-1 overflow-y-auto relative bg-[#030303] flex flex-col">
+    <main class="flex-1 overflow-y-auto relative bg-[#030303] flex flex-col transition-all duration-500">
         <div id="key-warning-banner" class="hidden bg-orange-500/10 border-b border-orange-500/20 px-8 py-3 flex items-center justify-center gap-2 text-orange-400 text-sm font-medium">
             <i data-lucide="alert-triangle" class="w-4 h-4"></i>
             <span>Warning: Your API Key will expire in <span id="key-expire-days" class="font-bold"></span> days.</span>
@@ -133,7 +136,7 @@
                 document.getElementById('main-sidebar').classList.remove('hidden');
                 
                 const avatarUrl = state.user.avatar && state.user.avatar !== "" ? `https://cdn.discordapp.com/avatars/${state.user.id}/${state.user.avatar}.png` : null;
-                const avatarHtml = avatarUrl ? `<img src="${avatarUrl}" class="w-10 h-10 rounded-full border border-brand-500/30 object-cover shadow-md">` : `<div class="w-10 h-10 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 font-bold uppercase border border-brand-500/30">${state.user.username.charAt(0)}</div>`;
+                const avatarHtml = avatarUrl ? `<img src="${avatarUrl}" class="w-10 h-10 rounded-full border border-brand-500/30 object-cover shadow-md transition-all hover:scale-110">` : `<div class="w-10 h-10 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 font-bold uppercase border border-brand-500/30 transition-all hover:scale-110">${state.user.username.charAt(0)}</div>`;
 
                 document.getElementById('user-profile-area').innerHTML = `
                     <div class="flex items-center gap-3">
@@ -168,7 +171,7 @@
                         <div class="w-16 h-16 bg-brand-500/10 text-brand-400 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-brand-500/20"><i data-lucide="shield" class="w-8 h-8"></i></div>
                         <h2 class="text-3xl font-bold text-white mb-2 tracking-tight">Luau-Auth</h2>
                         <p class="text-zinc-400 text-sm mb-8">Authenticate with Discord to access the dashboard.</p>
-                        <a href="/api/auth/discord" class="w-full flex items-center justify-center gap-2 bg-[#5865F2] hover:bg-[#4752C4] text-white py-3 rounded-xl text-sm font-medium transition-all shadow-lg shadow-[#5865F2]/20 border border-[#5865F2]/50 hover:border-[#5865F2]">
+                        <a href="/api/auth/discord" class="w-full flex items-center justify-center gap-2 bg-[#5865F2] hover:bg-[#4752C4] text-white py-3 rounded-xl text-sm font-medium shadow-lg shadow-[#5865F2]/20 border border-[#5865F2]/50 hover:border-[#5865F2]">
                             <i data-lucide="log-in" class="w-5 h-5"></i> Login with Discord
                         </a>
                     </div>
@@ -214,7 +217,8 @@
         }
 
         async function loadFromServer() {
-            const localData = localStorage.getItem('sanctuary_data');
+            const dataKey = 'luau_data_' + state.user.id;
+            const localData = localStorage.getItem(dataKey);
             if (localData) state.projects = JSON.parse(localData);
 
             try {
@@ -223,7 +227,7 @@
                     const data = await res.json();
                     if (data.projects && data.projects.length > 0) {
                         state.projects = data.projects;
-                        localStorage.setItem('sanctuary_data', JSON.stringify(state.projects));
+                        localStorage.setItem(dataKey, JSON.stringify(state.projects));
                     } else if (state.projects.length > 0) {
                         await syncToServer();
                     }
@@ -233,7 +237,8 @@
         }
 
         async function syncToServer() {
-            localStorage.setItem('sanctuary_data', JSON.stringify(state.projects));
+            const dataKey = 'luau_data_' + state.user.id;
+            localStorage.setItem(dataKey, JSON.stringify(state.projects));
             try {
                 const res = await fetch('/api/sync', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -252,8 +257,8 @@
                     <h3 class="text-xl font-bold text-white mb-2">Sign Out</h3>
                     <p class="text-sm text-zinc-400 mb-6">Are you sure you want to sign out or switch accounts?</p>
                     <div class="flex gap-3">
-                        <button onclick="closeModal()" class="flex-1 px-4 py-2.5 bg-surface-700 hover:bg-surface-600 text-white rounded-lg text-sm font-medium transition-all">Cancel</button>
-                        <button onclick="confirmLogout()" class="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-all">Sign Out</button>
+                        <button onclick="closeModal()" class="flex-1 px-4 py-2.5 bg-surface-700 hover:bg-surface-600 text-white rounded-lg text-sm font-medium">Cancel</button>
+                        <button onclick="confirmLogout()" class="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium">Sign Out</button>
                     </div>
                 </div>
             </div>`;
@@ -261,7 +266,7 @@
         }
 
         function confirmLogout() {
-            localStorage.removeItem('sanctuary_user'); localStorage.removeItem('sanctuary_api_key'); localStorage.removeItem('sanctuary_data');
+            localStorage.removeItem('sanctuary_user'); localStorage.removeItem('sanctuary_api_key');
             window.location.reload();
         }
 
@@ -270,11 +275,11 @@
         function renderApp() {
             if (!state.user) return;
 
-            document.getElementById('tab-dashboard').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'dashboard' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
-            document.getElementById('tab-projects').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'projects' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
-            document.getElementById('tab-settings').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'settings' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
+            document.getElementById('tab-dashboard').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium ${state.activeTab === 'dashboard' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
+            document.getElementById('tab-projects').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium ${state.activeTab === 'projects' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
+            document.getElementById('tab-settings').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium ${state.activeTab === 'settings' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
             if(document.getElementById('tab-register')) {
-                document.getElementById('tab-register').className = `w-full items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'register' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'} ${state.user.isAdmin ? 'flex' : 'hidden'}`;
+                document.getElementById('tab-register').className = `w-full items-center gap-3 px-4 py-3 rounded-md text-sm font-medium ${state.activeTab === 'register' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'} ${state.user.isAdmin ? 'flex' : 'hidden'}`;
             }
 
             const main = document.getElementById('main-content');
@@ -283,11 +288,11 @@
                 renderDashboard(main);
             } else if (state.activeTab === 'projects') {
                 main.innerHTML = `
-                    <div class="flex justify-between items-center mb-8">
+                    <div class="flex justify-between items-center mb-8 modal-animate">
                         <div><h2 class="text-3xl font-bold text-white tracking-tight">Projects</h2><p class="text-zinc-500 text-sm mt-1">Manage your script hubs and loaders.</p></div>
-                        <button onclick="openCreateProjectModal()" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-all shadow-[0_0_15px_rgba(79,70,229,0.3)]"><i data-lucide="plus" class="w-5 h-5"></i> Create Project</button>
+                        <button onclick="openCreateProjectModal()" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium shadow-[0_0_15px_rgba(79,70,229,0.3)]"><i data-lucide="plus" class="w-5 h-5"></i> Create Project</button>
                     </div>
-                    <div class="space-y-4">${renderProjectsList()}</div>
+                    <div class="space-y-4 modal-animate">${renderProjectsList()}</div>
                 `;
             } else if (state.activeTab === 'register') {
                 renderRegister(main);
@@ -310,23 +315,23 @@
             }));
 
             mainContainer.innerHTML = `
-                <div class="flex justify-between items-center mb-8">
+                <div class="flex justify-between items-center mb-8 modal-animate">
                     <div><h2 class="text-3xl font-bold text-white tracking-tight">Dashboard Overview</h2><p class="text-zinc-500 text-sm mt-1">Track analytics and real-time script executions.</p></div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 flex items-center gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 modal-animate">
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 flex items-center gap-4 hover:border-brand-500/30 transition-all hover:scale-[1.02]">
                         <div class="w-12 h-12 bg-brand-500/10 rounded-xl flex items-center justify-center border border-brand-500/20 text-brand-400"><i data-lucide="activity" class="w-6 h-6"></i></div>
                         <div><p class="text-zinc-400 text-sm font-medium">Total Executions</p><p class="text-2xl font-bold text-white">${totalExecutions.toLocaleString()}</p></div>
                     </div>
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 flex items-center gap-4">
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 flex items-center gap-4 hover:border-emerald-500/30 transition-all hover:scale-[1.02]">
                         <div class="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center border border-emerald-500/20 text-emerald-400"><i data-lucide="flame" class="w-6 h-6"></i></div>
                         <div><p class="text-zinc-400 text-sm font-medium">Most Executed Script</p><p class="text-xl font-bold text-white truncate max-w-[200px]">${topScript.name} <span class="text-sm font-medium text-emerald-500 ml-2">(${topScript.execs})</span></p></div>
                     </div>
                 </div>
 
-                <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6">
-                    <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-4 h-4 text-brand-400"></i> Execution History (Last 30 Days)</h3>
+                <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 modal-animate hover:border-brand-500/30 transition-all">
+                    <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-4 h-4 text-brand-400"></i> Execution History</h3>
                     <div class="h-[400px] w-full relative">
                         <canvas id="executionChart"></canvas>
                     </div>
@@ -338,15 +343,21 @@
             const totalHistory = {};
 
             state.projects.forEach(p => p.scripts.forEach(s => {
-                if(s.executionHistory) {
-                    Object.keys(s.executionHistory).forEach(d => {
-                        datesSet.add(d);
-                        totalHistory[d] = (totalHistory[d] || 0) + s.executionHistory[d];
-                    });
+                let histSum = 0;
+                if (!s.executionHistory) s.executionHistory = {};
+                Object.values(s.executionHistory).forEach(v => histSum += v);
+                
+                if ((s.executions || 0) > histSum) {
+                    const fallbackDate = new Date().toISOString().split('T').shift();
+                    s.executionHistory[fallbackDate] = (s.executionHistory[fallbackDate] || 0) + (s.executions - histSum);
                 }
+
+                Object.keys(s.executionHistory).forEach(d => {
+                    datesSet.add(d);
+                    totalHistory[d] = (totalHistory[d] || 0) + s.executionHistory[d];
+                });
             }));
 
-            // Fixed bracket stripping issue with .shift()
             if (datesSet.size === 0) datesSet.add(new Date().toISOString().split('T').shift());
             
             const labels = Array.from(datesSet).sort();
@@ -370,7 +381,6 @@
                 }
             }));
 
-            // Fixed fatal syntax error caused by bracket stripping
             datasets.push({
                 label: 'Total Executions',
                 data: labels.map(d => totalHistory[d] || 0),
@@ -388,6 +398,7 @@
                 data: { labels, datasets },
                 options: {
                     responsive: true, maintainAspectRatio: false,
+                    animation: { duration: 2000, easing: 'easeOutQuart' },
                     interaction: { mode: 'index', intersect: false },
                     scales: {
                         y: { beginAtZero: true, grid: { color: '#27272a' }, ticks: { color: '#a1a1aa' } },
@@ -415,7 +426,7 @@
 
         function renderRegister(mainContainer) {
             mainContainer.innerHTML = `
-                <div class="max-w-6xl mx-auto">
+                <div class="max-w-6xl mx-auto modal-animate">
                     <div class="flex justify-between items-center mb-8">
                         <div><h2 class="text-3xl font-bold text-white tracking-tight">Key Management</h2><p class="text-zinc-500 text-sm mt-1">Admin control over user access keys.</p></div>
                         <div class="flex gap-2">
@@ -460,13 +471,13 @@
                 const expiredStyle = daysLeft === 0 ? "text-red-400 font-bold" : "text-emerald-400 font-medium";
                 
                 return `
-                <tr class="hover:bg-surface-700/30 transition-colors">
+                <tr class="hover:bg-surface-700/30">
                     <td class="p-4 font-mono text-zinc-300 text-xs">${keyStr}</td>
                     <td class="p-4">${userDisplay}</td>
                     <td class="p-4 ${expiredStyle}">${daysLeft} Days</td>
                     <td class="p-4 flex justify-end gap-2">
-                        <button onclick="extendKey('${keyStr}')" class="px-3 py-1.5 bg-surface-700 hover:bg-surface-600 text-white rounded-md text-xs border border-zinc-700/50 transition-colors">Extend</button>
-                        <button onclick="revokeKey('${keyStr}')" class="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-md text-xs border border-red-500/20 transition-colors">Revoke</button>
+                        <button onclick="extendKey('${keyStr}')" class="px-3 py-1.5 bg-surface-700 hover:bg-surface-600 text-white rounded-md text-xs border border-zinc-700/50">Extend</button>
+                        <button onclick="revokeKey('${keyStr}')" class="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-md text-xs border border-red-500/20">Revoke</button>
                     </td>
                 </tr>`;
             }).join('');
@@ -516,10 +527,10 @@
 
         function renderSettings(mainContainer) {
             mainContainer.innerHTML = `
-                <div class="max-w-2xl">
+                <div class="max-w-2xl modal-animate">
                     <h2 class="text-3xl font-bold text-white tracking-tight mb-8">Settings</h2>
                     
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6">
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 transition-all">
                         <h3 class="text-lg font-bold text-white flex items-center gap-2 mb-4"><i data-lucide="key" class="w-5 h-5"></i> Access Configuration</h3>
                         <div>
                             <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Your API Key ${state.user.isAdmin ? '(Not needed for Admins)' : ''}</label>
@@ -533,7 +544,7 @@
 
                     <div class="mt-8 pt-8 border-t border-zinc-800/50">
                         <h3 class="text-lg font-bold text-red-400 flex items-center gap-2 mb-4"><i data-lucide="log-out" class="w-5 h-5"></i> Account Actions</h3>
-                        <button onclick="openLogoutModal()" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-6 py-2.5 rounded-lg text-sm font-medium border border-red-500/20 transition-all flex items-center gap-2">
+                        <button onclick="openLogoutModal()" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-6 py-2.5 rounded-lg text-sm font-medium border border-red-500/20 flex items-center gap-2">
                             Sign Out / Switch Account
                         </button>
                     </div>
@@ -551,26 +562,26 @@
             if (state.projects.length === 0) return `<div class="text-center py-24 border-2 border-dashed border-zinc-800/60 rounded-2xl bg-surface-800/30"><h3 class="text-lg font-medium text-white">No projects yet</h3></div>`;
 
             return state.projects.map(p => `
-                <div class="bg-surface-800 border border-zinc-800 rounded-xl overflow-hidden transition-all duration-300 ${p.expanded ? 'shadow-xl shadow-black/50 ring-1 ring-white/5' : 'hover:border-zinc-700'}">
-                    <div class="flex items-center justify-between p-5 cursor-pointer bg-surface-800 hover:bg-surface-700/50" onclick="toggleProject('${p.id}')">
+                <div class="bg-surface-800 border border-zinc-800 rounded-xl overflow-hidden transition-all duration-300 ${p.expanded ? 'shadow-xl shadow-black/50 ring-1 ring-brand-500/20' : 'hover:border-zinc-700'}">
+                    <div class="flex items-center justify-between p-5 cursor-pointer bg-surface-800 hover:bg-surface-700/50 transition-colors" onclick="toggleProject('${p.id}')">
                         <div class="flex items-center gap-4">
-                            <div class="w-10 h-10 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center"><i data-lucide="box" class="text-brand-400 w-5 h-5"></i></div>
+                            <div class="w-10 h-10 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center transition-transform ${p.expanded ? 'scale-110' : ''}"><i data-lucide="box" class="text-brand-400 w-5 h-5"></i></div>
                             <div>
                                 <h3 class="text-lg font-semibold text-white">${p.name}</h3>
                                 <p class="text-[11px] text-zinc-500 font-mono">ID: ${p.id.substring(0, 16)}...</p>
                             </div>
                         </div>
                         <div class="flex items-center gap-2">
-                            <button onclick="event.stopPropagation(); openProjectSettings('${p.id}')" class="p-2 text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg" title="Settings"><i data-lucide="settings" class="w-5 h-5"></i></button>
+                            <button onclick="event.stopPropagation(); openProjectSettings('${p.id}')" class="p-2 text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg transition-colors" title="Settings"><i data-lucide="settings" class="w-5 h-5"></i></button>
                             <div class="w-px h-6 bg-zinc-800 mx-2"></div>
-                            <i data-lucide="${p.expanded ? 'chevron-up' : 'chevron-down'}" class="text-zinc-500 w-5 h-5"></i>
+                            <i data-lucide="${p.expanded ? 'chevron-up' : 'chevron-down'}" class="text-zinc-500 w-5 h-5 transition-transform"></i>
                         </div>
                     </div>
                     ${p.expanded ? `
-                    <div class="p-5 border-t border-zinc-800/80 bg-[#0a0a0c]">
+                    <div class="p-5 border-t border-zinc-800/80 bg-[#0a0a0c] modal-animate">
                         <div class="flex gap-3 mb-5">
-                            <button onclick="openAddScriptModal('${p.id}')" class="bg-surface-700 hover:bg-surface-700/80 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium border border-zinc-700/50"><i data-lucide="file-plus-2" class="w-4 h-4 text-brand-400"></i> ADD SCRIPT</button>
-                            <button onclick="openCustomLoaderModal('${p.id}')" class="bg-surface-700 hover:bg-surface-700/80 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium border border-zinc-700/50"><i data-lucide="code-2" class="w-4 h-4 text-zinc-400"></i> CUSTOM LOADER</button>
+                            <button onclick="openAddScriptModal('${p.id}')" class="bg-surface-700 hover:bg-surface-600 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium border border-zinc-700/50 transition-colors"><i data-lucide="file-plus-2" class="w-4 h-4 text-brand-400"></i> ADD SCRIPT</button>
+                            <button onclick="openCustomLoaderModal('${p.id}')" class="bg-surface-700 hover:bg-surface-600 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium border border-zinc-700/50 transition-colors"><i data-lucide="code-2" class="w-4 h-4 text-zinc-400"></i> CUSTOM LOADER</button>
                         </div>
                         <div class="space-y-2">${renderScripts(p.scripts, p.id)}</div>
                     </div>` : ''}
@@ -581,7 +592,7 @@
         function renderScripts(scripts, projectId) {
             if (scripts.length === 0) return `<div class="text-sm text-zinc-500 text-center py-6 bg-surface-900/50 rounded-lg border border-zinc-800/30">No scripts added</div>`;
             return scripts.map(s => `
-                <div class="group flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-[#121215] border border-zinc-800/80 rounded-lg hover:border-brand-500/30 transition-all">
+                <div class="group flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-[#121215] border border-zinc-800/80 rounded-lg hover:border-brand-500/30 transition-all hover:translate-x-1">
                     <div class="flex items-center gap-4 mb-3 sm:mb-0">
                         <button onclick="toggleScriptStatusDirect('${projectId}', '${s.id}')" class="relative inline-flex h-[22px] w-[42px] flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none transition-all border-[1.5px] ${s.status === 'Active' ? 'border-[#272a54] bg-[#0a0a0c]' : 'border-zinc-800 bg-[#0a0a0c]'}" title="Toggle Active">
                             <span class="pointer-events-none absolute left-[2px] inline-block h-[15px] w-[15px] transform rounded-full transition-all duration-300 ease-in-out ${s.status === 'Active' ? 'translate-x-[19px] bg-[#515dfa]' : 'translate-x-0 bg-zinc-600'}"></span>
@@ -598,10 +609,10 @@
                             </div>
                         </div>
                     </div>
-                    <div class="flex items-center gap-1.5">
-                        <button onclick="openEditScriptModal('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-brand-400 hover:bg-brand-500/10 rounded-md transition-colors flex items-center gap-1.5"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i> EDIT</button>
-                        <button onclick="copyToClipboard('loadstring(game:HttpGet(\\'${window.location.origin}/raw/${projectId}/${s.id}\\'))()', 'Copied Script Loader!')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-md transition-colors flex items-center gap-1.5"><i data-lucide="copy" class="w-3.5 h-3.5"></i> COPY LOADER</button>
-                        <button onclick="deleteScript('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors flex items-center gap-1.5"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> DELETE</button>
+                    <div class="flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                        <button onclick="openEditScriptModal('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-brand-400 hover:bg-brand-500/10 rounded-md flex items-center gap-1.5"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i> EDIT</button>
+                        <button onclick="copyToClipboard('loadstring(game:HttpGet(\\'${window.location.origin}/raw/${projectId}/${s.id}\\'))()', 'Copied Script Loader!')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-md flex items-center gap-1.5"><i data-lucide="copy" class="w-3.5 h-3.5"></i> COPY LOADER</button>
+                        <button onclick="deleteScript('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-md flex items-center gap-1.5"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> DELETE</button>
                     </div>
                 </div>
             `).join('');
@@ -614,9 +625,9 @@
             <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-md shadow-2xl modal-animate ring-1 ring-white/5">
                     <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2"><i data-lucide="folder-plus" class="text-brand-400 w-5 h-5"></i> Create Project</h3>
-                    <div class="space-y-4"><div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Custom Project Name</label><input type="text" id="input-cp-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div></div>
+                    <div class="space-y-4"><div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Custom Project Name</label><input type="text" id="input-cp-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none transition-colors"></div></div>
                     <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50">
-                        <button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white rounded-lg">Cancel</button>
+                        <button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg">Cancel</button>
                         <button id="btn-submit-project" onclick="submitCreateProject()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium shadow-lg min-w-[140px]">Create</button>
                     </div>
                 </div>
@@ -639,13 +650,13 @@
                 <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-md shadow-2xl modal-animate ring-1 ring-white/5">
                     <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2"><i data-lucide="settings-2" class="text-zinc-400 w-5 h-5"></i> Project Settings</h3>
                     <div class="space-y-4">
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Change Project Name</label><input type="text" id="input-ps-name" value="${project.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
-                        <div><label class="block text-xs font-bold text-brand-400 mb-1.5 uppercase flex items-center gap-1.5"><i data-lucide="bell-ring" class="w-3.5 h-3.5"></i> Execution Webhook URL</label><input type="text" id="input-ps-webhook" value="${project.webhookUrl || ''}" placeholder="https://discord.com/api/webhooks/..." class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none text-xs"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Change Project Name</label><input type="text" id="input-ps-name" value="${project.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none transition-colors"></div>
+                        <div><label class="block text-xs font-bold text-brand-400 mb-1.5 uppercase flex items-center gap-1.5"><i data-lucide="bell-ring" class="w-3.5 h-3.5"></i> Execution Webhook URL</label><input type="text" id="input-ps-webhook" value="${project.webhookUrl || ''}" placeholder="https://discord.com/api/webhooks/..." class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none text-xs transition-colors"></div>
                     </div>
                     <div class="flex items-center justify-between mt-8 pt-4 border-t border-zinc-800/50">
                         <button onclick="deleteProject('${projectId}')" class="text-red-400 hover:bg-red-500/10 px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete Project</button>
                         <div class="flex gap-2">
-                            <button onclick="closeModal()" class="px-4 py-2.5 text-sm text-zinc-400 hover:text-white rounded-lg">Cancel</button>
+                            <button onclick="closeModal()" class="px-4 py-2.5 text-sm text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg">Cancel</button>
                             <button onclick="saveProjectSettings('${projectId}')" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium">Save</button>
                         </div>
                     </div>
@@ -680,13 +691,13 @@
                 <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-lg shadow-2xl modal-animate ring-1 ring-white/5 my-8">
                     <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2"><i data-lucide="file-code" class="text-brand-400 w-5 h-5"></i> Add New Script</h3>
                     <div class="space-y-5">
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Custom Script Name</label><input type="text" id="input-as-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Roblox Game ID</label><input type="text" id="input-as-gameid" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono" placeholder="Leave empty for Universal Script"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Custom Script Name</label><input type="text" id="input-as-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none transition-colors"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Roblox Game ID</label><input type="text" id="input-as-gameid" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono transition-colors" placeholder="Leave empty for Universal Script"></div>
                         <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Upload File</label>
-                            <div id="drop-zone" class="border-2 border-dashed border-zinc-700 rounded-xl p-8 text-center bg-[#0a0a0c] hover:bg-surface-800 hover:border-brand-500/50 cursor-pointer relative"><input type="file" accept=".lua" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)"><div class="bg-surface-800 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"><i data-lucide="upload-cloud" class="w-6 h-6 text-brand-400"></i></div><p class="text-sm text-zinc-300 font-medium" id="drop-text">Drag & drop your file here</p></div>
+                            <div id="drop-zone" class="border-2 border-dashed border-zinc-700 rounded-xl p-8 text-center bg-[#0a0a0c] hover:bg-surface-800 hover:border-brand-500/50 cursor-pointer relative transition-all"><input type="file" accept=".lua" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)"><div class="bg-surface-800 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"><i data-lucide="upload-cloud" class="w-6 h-6 text-brand-400"></i></div><p class="text-sm text-zinc-300 font-medium" id="drop-text">Drag & drop your file here</p></div>
                         </div>
                     </div>
-                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50"><button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white rounded-lg">Cancel</button><button onclick="submitAddScript()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm">Upload Script</button></div>
+                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50"><button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg">Cancel</button><button onclick="submitAddScript()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm">Upload Script</button></div>
                 </div>
             </div>`;
             lucide.createIcons(); setupDragDrop();
@@ -747,11 +758,11 @@
                 <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-lg shadow-2xl modal-animate ring-1 ring-white/5">
                     <div class="flex justify-between items-center mb-5"><h3 class="text-xl font-bold text-white flex items-center gap-2"><i data-lucide="edit" class="text-brand-400 w-5 h-5"></i> Edit Script</h3><span class="px-2.5 py-1 rounded text-xs font-bold bg-brand-500/10 text-brand-400 border border-brand-500/20">${script.version}</span></div>
                     <div class="space-y-4">
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Script Name</label><input type="text" id="input-es-name" value="${script.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Game ID</label><input type="text" id="input-es-gameid" value="${script.gameId || ''}" placeholder="Leave empty for Universal Script" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono"></div>
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Reupload File <span class="text-brand-400 normal-case">(Bumps Version)</span></label><input type="file" id="input-es-file" accept=".lua" class="w-full text-sm text-zinc-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:bg-surface-700 file:text-white hover:file:bg-surface-600 bg-[#0a0a0c] border border-zinc-700 rounded-lg outline-none cursor-pointer"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Script Name</label><input type="text" id="input-es-name" value="${script.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none transition-colors"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Game ID</label><input type="text" id="input-es-gameid" value="${script.gameId || ''}" placeholder="Leave empty for Universal Script" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono transition-colors"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Reupload File <span class="text-brand-400 normal-case">(Bumps Version)</span></label><input type="file" id="input-es-file" accept=".lua" class="w-full text-sm text-zinc-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:bg-surface-700 file:text-white hover:file:bg-surface-600 bg-[#0a0a0c] border border-zinc-700 rounded-lg outline-none cursor-pointer transition-colors"></div>
                     </div>
-                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50"><button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white rounded-lg">Cancel</button><button onclick="saveEditScript('${projectId}', '${scriptId}')" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm">Save Changes</button></div>
+                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50"><button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg">Cancel</button><button onclick="saveEditScript('${projectId}', '${scriptId}')" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm">Save Changes</button></div>
                 </div>
             </div>`;
             lucide.createIcons();
