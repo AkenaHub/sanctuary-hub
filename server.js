@@ -64,7 +64,8 @@ const requireValidAccess = (req, res, next) => {
 
 // --- Discord OAuth2 Endpoints ---
 app.get('/api/auth/discord', (req, res) => {
-    const url = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify`;
+    // FIXED: The authorization URL is 'discord.com/oauth2/authorize', not 'discord.com/api/oauth2/authorize'
+    const url = `https://discord.com/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify`;
     res.redirect(url);
 });
 
