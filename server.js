@@ -17,8 +17,6 @@ const ADMIN_IDS = ["1284247278957367337", "1282859051092414586"];
 // These should be set in your Railway Environment Variables
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || "1499199968135876608";
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || "zAoxnpFlqfOgbN1fT8ZloyQgE9j6UzjG"; 
-
-// FIXED: Updated the redirect link to match your new Luau-Auth domain!
 const REDIRECT_URI = process.env.REDIRECT_URI || "https://luau-auth-production.up.railway.app/api/auth/callback";
 
 // --- Database Helpers ---
@@ -88,7 +86,6 @@ app.get('/api/auth/callback', async (req, res) => {
         });
         const userData = await userResponse.json();
 
-        // Capture Discord ID, Username, and Avatar Hash
         res.send(`
             <script>
                 localStorage.setItem('sanctuary_user', JSON.stringify({
@@ -170,22 +167,70 @@ app.post('/api/admin/revoke-key', requireAdmin, (req, res) => {
 });
 
 // --- Frontend Sync Endpoints ---
+// SCOPED VISIBILITY: Users only get their own projects (Admins get all)
 app.get('/api/sync', (req, res) => {
-    res.json({ projects: readDB().projects });
+    const { discordId } = req.query;
+    const db = readDB();
+    if (!discordId) return res.json({ projects: [] });
+
+    const isAdmin = ADMIN_IDS.includes(discordId);
+
+    // Retroactive Fix: If a project lacks an owner (from before this update), assign it to the requester
+    let needsSave = false;
+    db.projects.forEach(p => {
+        if (!p.ownerId) { p.ownerId = discordId; needsSave = true; }
+    });
+    if (needsSave) writeDB(db);
+
+    const userProjects = isAdmin ? db.projects : db.projects.filter(p => p.ownerId === discordId);
+    res.json({ projects: userProjects });
 });
 
+// MULTI-USER MERGE: Safely update only the projects the user actually owns
 app.post('/api/sync', requireValidAccess, (req, res) => {
     const db = readDB();
-    db.projects = req.body.projects;
+    const incomingProjects = req.body.projects;
+    const discordId = req.body.discordId;
+    const isAdmin = ADMIN_IDS.includes(discordId);
+
+    const existingProjectsMap = new Map(db.projects.map(p => [p.id, p]));
+
+    incomingProjects.forEach(incomingProj => {
+        if (!incomingProj.ownerId) incomingProj.ownerId = discordId;
+        const existing = existingProjectsMap.get(incomingProj.id);
+
+        if (existing) {
+            // Update if user is admin or owner
+            if (isAdmin || existing.ownerId === discordId) {
+                existingProjectsMap.set(incomingProj.id, incomingProj);
+            }
+        } else {
+            existingProjectsMap.set(incomingProj.id, incomingProj);
+        }
+    });
+
+    const incomingIds = new Set(incomingProjects.map(p => p.id));
+    
+    // Convert map back to array and handle deletions safely
+    db.projects = Array.from(existingProjectsMap.values()).filter(p => {
+        if (isAdmin) {
+            return incomingIds.has(p.id); // Admin syncs exact state
+        } else {
+            if (p.ownerId === discordId) {
+                return incomingIds.has(p.id); // User can only delete their own projects
+            }
+            return true; // Don't delete other users' projects
+        }
+    });
+
     writeDB(db);
     res.json({ success: true });
 });
 
-// --- RAW SCRIPT URL ENDPOINT (WITH LUA WEBHOOK INJECTION) ---
+// --- RAW SCRIPT URL ENDPOINT (WITH EXECUTIONS, HISTORY & WEBHOOKS) ---
 app.get('/raw/:projectId/:scriptId', (req, res) => {
     const { projectId, scriptId } = req.params;
     
-    // ANTI-SNOOP: Block regular browsers from seeing code, show Script ID instead
     const acceptHeader = req.headers['accept'] || "";
     const isBrowser = acceptHeader.includes("text/html");
 
@@ -207,13 +252,18 @@ app.get('/raw/:projectId/:scriptId', (req, res) => {
                 return res.send(`print("This script is no longer working. ID: ${scriptId}")`);
             }
             
-            // Increment backend executions
+            // Increment overall executions
             script.executions = (script.executions || 0) + 1;
+            
+            // Increment historical daily executions (For the Dashboard Graph)
+            if (!script.executionHistory) script.executionHistory = {};
+            const today = new Date().toISOString().split('T'); // Format: YYYY-MM-DD
+            script.executionHistory[today] = (script.executionHistory[today] || 0) + 1;
+            
             writeDB(db);
 
             let finalLuaCode = "";
 
-            // INJECT WEBHOOK LUA CODE AT LINE 1 (if a webhook URL exists for this project)
             if (project.webhookUrl && project.webhookUrl.trim() !== "") {
                 const luaWebhookSnippet = `-- Luau-Auth Execution Logger
 pcall(function()
@@ -263,9 +313,7 @@ end)\n\n`;
                 finalLuaCode += luaWebhookSnippet;
             }
 
-            // Append the actual uploaded script
             finalLuaCode += (script.code || '-- Error: Uploaded script file was completely empty.');
-            
             return res.send(finalLuaCode);
         }
     }
