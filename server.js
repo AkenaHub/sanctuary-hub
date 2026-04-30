@@ -86,11 +86,13 @@ app.get('/api/auth/callback', async (req, res) => {
         });
         const userData = await userResponse.json();
 
+        // Capture Discord ID, Username, and Avatar Hash
         res.send(`
             <script>
                 localStorage.setItem('sanctuary_user', JSON.stringify({
                     id: "${userData.id}",
                     username: "${userData.username}",
+                    avatar: "${userData.avatar || ''}",
                     isAdmin: ${ADMIN_IDS.includes(userData.id)}
                 }));
                 window.location.href = "/";
@@ -108,7 +110,6 @@ app.post('/api/link-key', (req, res) => {
     
     if (!db.apiKeys[apiKey]) return res.status(400).json({ error: "Invalid API Key" });
     
-    // Link user details to the key for Admin visibility
     db.apiKeys[apiKey].userId = discordId;
     db.apiKeys[apiKey].username = discordName;
     writeDB(db);
@@ -138,7 +139,6 @@ app.post('/api/admin/keys', requireAdmin, (req, res) => {
 app.post('/api/admin/generate-key', requireAdmin, (req, res) => {
     const { days } = req.body;
     const db = readDB();
-    // Lowercase hex string without SNC-
     const newKey = crypto.randomBytes(8).toString('hex').toLowerCase();
     const expiresAt = Date.now() + (parseInt(days) * 24 * 60 * 60 * 1000);
 
@@ -179,12 +179,11 @@ app.post('/api/sync', requireValidAccess, (req, res) => {
     res.json({ success: true });
 });
 
-// --- RAW SCRIPT URL ENDPOINT (WITH EXECUTIONS & WEBHOOKS) ---
+// --- RAW SCRIPT URL ENDPOINT (WITH LUA WEBHOOK INJECTION) ---
 app.get('/raw/:projectId/:scriptId', (req, res) => {
     const { projectId, scriptId } = req.params;
     
-    // ANTI-SNOOP FIX: Check 'Accept' headers instead of User-Agent. 
-    // Browsers specifically ask for 'text/html' when visiting a link, but executors/scripts usually ask for '*/*' or 'text/plain'.
+    // ANTI-SNOOP: Block regular browsers from seeing code, show Script ID instead
     const acceptHeader = req.headers['accept'] || "";
     const isBrowser = acceptHeader.includes("text/html");
 
@@ -201,39 +200,71 @@ app.get('/raw/:projectId/:scriptId', (req, res) => {
         if (script) {
             res.type('text/plain');
             
+            // KILL SWITCH
             if (script.status !== 'Active') {
                 return res.send(`print("This script is no longer working. ID: ${scriptId}")`);
             }
             
-            // Increment Executions
+            // Increment backend executions
             script.executions = (script.executions || 0) + 1;
             writeDB(db);
 
-            // Trigger Discord Webhook Alert
-            if (project.webhookUrl) {
-                const executor = userAgent.substring(0, 60) || "Unknown Executor";
-                try {
-                    fetch(project.webhookUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            embeds: [{
-                                title: "🚀 Script Executed",
-                                color: 0x4f46e5,
-                                fields: [
-                                    { name: "Project", value: project.name, inline: true },
-                                    { name: "Script", value: script.name, inline: true },
-                                    { name: "Executor", value: executor, inline: true },
-                                    { name: "Total Executions", value: script.executions.toString(), inline: true }
-                                ],
-                                timestamp: new Date().toISOString()
-                            }]
-                        })
-                    }).catch(()=>{}); // Ignore failures to not block script
-                } catch(e) {}
+            let finalLuaCode = "";
+
+            // INJECT WEBHOOK LUA CODE AT LINE 1 (if a webhook URL exists for this project)
+            if (project.webhookUrl && project.webhookUrl.trim() !== "") {
+                const luaWebhookSnippet = `-- Luau-Auth Execution Logger
+pcall(function()
+    local request = http_request or syn and syn.request or request
+    if not request then return end
+    
+    local HttpService = game:GetService("HttpService")
+    local Players = game:GetService("Players")
+    local UIS = game:GetService("UserInputService")
+    
+    local player = Players.LocalPlayer
+    local executor = (getexecutorname and getexecutorname()) or (identifyexecutor and identifyexecutor()) or "Unknown"
+    
+    local deviceType = "Unknown"
+    if UIS.TouchEnabled and not UIS.KeyboardEnabled then
+        deviceType = "Mobile"
+    elseif UIS.GamepadEnabled and not UIS.KeyboardEnabled then
+        deviceType = "Console"
+    elseif UIS.KeyboardEnabled then
+        deviceType = "PC"
+    end
+    
+    getgenv().execCount = (getgenv().execCount or 0) + 1
+    
+    local payload = {
+        username = "Luau-Auth Logger",
+        embeds = {{
+            title = "Execution Log",
+            color = 0x4F6CEE,
+            fields = {
+                { name = "User Info", value = "Name: " .. player.Name .. "\\nUserId: " .. player.UserId, inline = false },
+                { name = "Script Triggered", value = "${script.name}", inline = false },
+                { name = "Executor", value = executor, inline = false },
+                { name = "Device", value = deviceType, inline = true },
+                { name = "Executions (Session)", value = tostring(getgenv().execCount), inline = true }
+            }
+        }}
+    }
+    
+    request({
+        Url = "${project.webhookUrl}",
+        Method = "POST",
+        Headers = { ["Content-Type"] = "application/json" },
+        Body = HttpService:JSONEncode(payload)
+    })
+end)\n\n`;
+                finalLuaCode += luaWebhookSnippet;
             }
 
-            return res.send(script.code || '-- Error: Uploaded script file was completely empty.');
+            // Append the actual uploaded script
+            finalLuaCode += (script.code || '-- Error: Uploaded script file was completely empty.');
+            
+            return res.send(finalLuaCode);
         }
     }
     
@@ -255,5 +286,5 @@ app.get('/loader/:projectId', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Sanctuary Hub API is successfully running on port ${PORT}`);
+    console.log(`Luau-Auth API is successfully running on port ${PORT}`);
 });
