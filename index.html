@@ -16,10 +16,7 @@
             theme: {
                 extend: {
                     fontFamily: { sans: ['Inter', 'sans-serif'] },
-                    colors: {
-                        brand: { 500: '#4f46e5', 600: '#4338ca' },
-                        surface: { 900: '#09090b', 800: '#111113', 700: '#1a1a1e' }
-                    }
+                    colors: { brand: { 500: '#4f46e5', 600: '#4338ca' }, surface: { 900: '#09090b', 800: '#111113', 700: '#1a1a1e' } }
                 }
             }
         }
@@ -40,24 +37,19 @@
 </head>
 <body class="bg-black text-zinc-100 font-sans h-screen flex overflow-hidden selection:bg-brand-500/30">
 
-    <aside class="w-64 bg-surface-900 border-r border-zinc-800 flex flex-col z-10 shadow-2xl">
+    <aside id="main-sidebar" class="w-64 bg-surface-900 border-r border-zinc-800 flex flex-col z-10 shadow-2xl hidden">
         <div class="p-6 border-b border-zinc-800/50">
-            <h1 class="text-xl font-bold text-white flex items-center gap-3">
-                <div class="p-1.5 bg-brand-500/20 rounded-md">
-                    <i data-lucide="shield" class="text-brand-500 w-5 h-5"></i>
-                </div>
-                Sanctuary
-            </h1>
+            <h1 class="text-xl font-bold text-white flex items-center gap-3"><div class="p-1.5 bg-brand-500/20 rounded-md"><i data-lucide="shield" class="text-brand-500 w-5 h-5"></i></div>Sanctuary</h1>
         </div>
         
-        <!-- User Profile Area -->
-        <div id="user-profile-area" class="p-4 border-b border-zinc-800/50">
-            <!-- Injected via JS -->
-        </div>
+        <div id="user-profile-area" class="p-4 border-b border-zinc-800/50"></div>
 
-        <nav id="sidebar-nav" class="flex-1 p-4 space-y-1 hidden">
+        <nav id="sidebar-nav" class="flex-1 p-4 space-y-1">
             <button onclick="setTab('projects')" id="tab-projects" class="w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium">
                 <i data-lucide="folder" class="w-5 h-5"></i> Projects
+            </button>
+            <button onclick="setTab('register')" id="tab-register" class="w-full items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium hidden">
+                <i data-lucide="users" class="w-5 h-5"></i> Register
             </button>
             <button onclick="setTab('settings')" id="tab-settings" class="w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium">
                 <i data-lucide="settings" class="w-5 h-5"></i> Settings
@@ -65,17 +57,17 @@
         </nav>
     </aside>
 
-    <main class="flex-1 overflow-y-auto relative bg-[#030303]">
+    <main class="flex-1 overflow-y-auto relative bg-[#030303] flex flex-col">
         <!-- Key Expiration Warning Banner -->
         <div id="key-warning-banner" class="hidden bg-orange-500/10 border-b border-orange-500/20 px-8 py-3 flex items-center justify-center gap-2 text-orange-400 text-sm font-medium">
             <i data-lucide="alert-triangle" class="w-4 h-4"></i>
             <span>Warning: Your API Key will expire in <span id="key-expire-days" class="font-bold"></span> days. You will lose upload/edit access.</span>
         </div>
 
-        <div id="main-content" class="p-8 max-w-6xl mx-auto min-h-full">
-            <div class="flex items-center justify-center h-full flex-col gap-4">
-                <h2 class="text-2xl font-bold">Welcome to Sanctuary</h2>
-                <p class="text-zinc-500 text-sm">Please log in with Discord to access the hub.</p>
+        <div id="main-content" class="p-8 max-w-6xl mx-auto flex-1 w-full">
+            <!-- Loading or Login Container injected here initially -->
+            <div class="flex items-center justify-center h-full">
+                <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-brand-500"></i>
             </div>
         </div>
     </main>
@@ -87,6 +79,7 @@
         const state = {
             activeTab: 'projects',
             projects: [],
+            adminKeys: {},
             user: null,
             apiKey: localStorage.getItem('sanctuary_api_key') || "",
             draftScript: { projectId: null, file: null, code: null }
@@ -123,16 +116,18 @@
             parts.push(patch);
             return `v${parts.join('.')}`;
         }
+        function getShortDate() {
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const today = new Date(); return `${months.at(today.getMonth())} ${today.getDate()}`;
+        }
 
         // --- Authentication & Syncing ---
         async function initApp() {
-            // Check for logged in user
             const userData = localStorage.getItem('sanctuary_user');
             if (userData) {
                 state.user = JSON.parse(userData);
-                document.getElementById('sidebar-nav').classList.remove('hidden');
+                document.getElementById('main-sidebar').classList.remove('hidden');
                 
-                // Render Profile Area
                 document.getElementById('user-profile-area').innerHTML = `
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 font-bold uppercase border border-brand-500/30">
@@ -147,15 +142,33 @@
                     </div>
                 `;
                 
-                checkApiKeyStatus();
+                if (state.user.isAdmin) {
+                    const regBtn = document.getElementById('tab-register');
+                    regBtn.classList.remove('hidden');
+                    regBtn.classList.add('flex');
+                }
+                
                 await loadFromServer();
+                checkApiKeyStatus();
             } else {
-                document.getElementById('user-profile-area').innerHTML = `
-                    <a href="/api/auth/discord" class="w-full flex items-center justify-center gap-2 bg-[#5865F2] hover:bg-[#4752C4] text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
-                        <i data-lucide="log-in" class="w-4 h-4"></i> Login with Discord
-                    </a>
-                `;
+                renderLoginPanel();
             }
+            lucide.createIcons();
+        }
+
+        function renderLoginPanel() {
+            document.getElementById('main-content').innerHTML = `
+                <div class="flex items-center justify-center h-full">
+                    <div class="bg-surface-800 border border-zinc-800/80 rounded-2xl p-10 max-w-md w-full text-center shadow-2xl modal-animate ring-1 ring-white/5">
+                        <div class="w-16 h-16 bg-brand-500/10 text-brand-400 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-brand-500/20"><i data-lucide="shield" class="w-8 h-8"></i></div>
+                        <h2 class="text-3xl font-bold text-white mb-2 tracking-tight">Sanctuary Hub</h2>
+                        <p class="text-zinc-400 text-sm mb-8">Authenticate with Discord to access the script manager dashboard.</p>
+                        <a href="/api/auth/discord" class="w-full flex items-center justify-center gap-2 bg-[#5865F2] hover:bg-[#4752C4] text-white py-3 rounded-xl text-sm font-medium transition-all shadow-lg shadow-[#5865F2]/20 border border-[#5865F2]/50 hover:border-[#5865F2]">
+                            <i data-lucide="log-in" class="w-5 h-5"></i> Login with Discord
+                        </a>
+                    </div>
+                </div>
+            `;
             lucide.createIcons();
         }
 
@@ -163,12 +176,10 @@
             if (!state.apiKey || state.user.isAdmin) return;
             try {
                 const res = await fetch('/api/check-key', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ apiKey: state.apiKey })
                 });
                 const data = await res.json();
-                
                 if (data.valid) {
                     const daysLeft = Math.ceil((data.expiresAt - Date.now()) / (1000 * 60 * 60 * 24));
                     if (daysLeft <= 3 && daysLeft >= 1) {
@@ -181,12 +192,40 @@
             } catch (err) {}
         }
 
+        async function saveApiKey() {
+            const key = document.getElementById('input-user-apikey').value.trim();
+            if(!key) return showToast('Please enter an API key', 'error');
+            try {
+                const res = await fetch('/api/link-key', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ apiKey: key, discordId: state.user.id, discordName: state.user.username })
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                
+                state.apiKey = key;
+                localStorage.setItem('sanctuary_api_key', key);
+                showToast('API Key saved & linked!');
+                checkApiKeyStatus();
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
         async function loadFromServer() {
+            const localData = localStorage.getItem('sanctuary_data');
+            if (localData) state.projects = JSON.parse(localData);
+
             try {
                 const res = await fetch('/api/sync');
                 if (res.ok) {
                     const data = await res.json();
-                    state.projects = data.projects || [];
+                    if (data.projects && data.projects.length > 0) {
+                        state.projects = data.projects;
+                        localStorage.setItem('sanctuary_data', JSON.stringify(state.projects));
+                    } else if (state.projects.length > 0) {
+                        await syncToServer();
+                    }
                 }
             } catch (err) {
                 console.warn('Backend disconnected.');
@@ -196,32 +235,31 @@
         }
 
         async function syncToServer() {
+            localStorage.setItem('sanctuary_data', JSON.stringify(state.projects));
             try {
                 const res = await fetch('/api/sync', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        projects: state.projects,
-                        apiKey: state.apiKey,
-                        discordId: state.user.id
-                    })
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projects: state.projects, apiKey: state.apiKey, discordId: state.user.id })
                 });
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
             } catch (err) {
                 showToast(err.message || 'Failed to save. Check your API key.', 'error');
-                throw err; // Stop UI updates if save failed
+                throw err; 
             }
         }
 
-        // --- Rendering Engine ---
+        // --- Routing / Tabs ---
         function setTab(tab) { state.activeTab = tab; renderApp(); }
 
         function renderApp() {
-            if (!state.user) return; // Wait for login
+            if (!state.user) return;
 
             document.getElementById('tab-projects').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'projects' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
             document.getElementById('tab-settings').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'settings' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
+            if(document.getElementById('tab-register')) {
+                document.getElementById('tab-register').className = `w-full items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'register' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'} ${state.user.isAdmin ? 'flex' : 'hidden'}`;
+            }
 
             const main = document.getElementById('main-content');
             
@@ -238,60 +276,91 @@
                     </div>
                     <div class="space-y-4">${renderProjectsList()}</div>
                 `;
+            } else if (state.activeTab === 'register') {
+                renderRegister(main);
             } else {
                 renderSettings(main);
             }
             lucide.createIcons();
         }
 
-        function renderSettings(mainContainer) {
-            let adminHtml = '';
-            
-            // Admin Panel UI
-            if (state.user && state.user.isAdmin) {
-                adminHtml = `
-                <div class="bg-brand-950/20 border border-brand-500/30 rounded-xl p-6 mb-6">
-                    <h3 class="text-lg font-bold text-brand-400 flex items-center gap-2 mb-4"><i data-lucide="shield-alert" class="w-5 h-5"></i> Admin: Generate API Key</h3>
-                    <div class="flex gap-3 items-end">
-                        <div class="flex-1">
-                            <label class="block text-xs font-bold text-brand-400/70 mb-1.5 uppercase">Duration (Days)</label>
-                            <input type="number" id="input-admin-days" value="30" class="w-full bg-[#0a0a0c] border border-brand-500/30 rounded-lg p-2.5 text-white focus:border-brand-500 outline-none">
-                        </div>
-                        <button onclick="generateApiKey()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium h-[42px]">Generate Key</button>
-                    </div>
-                    <div id="admin-key-result" class="hidden mt-4 p-3 bg-[#0a0a0c] border border-brand-500/20 rounded-lg flex items-center justify-between">
-                        <code id="admin-new-key" class="text-emerald-400 font-mono text-sm"></code>
-                        <button onclick="copyToClipboard(document.getElementById('admin-new-key').innerText, 'Key Copied!')" class="text-zinc-400 hover:text-white"><i data-lucide="copy" class="w-4 h-4"></i></button>
-                    </div>
-                </div>`;
-            }
+        // --- Admin Register Tab ---
+        async function fetchAdminKeys() {
+            try {
+                const res = await fetch('/api/admin/keys', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ discordId: state.user.id })
+                });
+                const data = await res.json();
+                state.adminKeys = data.keys || {};
+                renderRegisterTable();
+            } catch(e) {}
+        }
 
-            // Normal Settings UI
+        function renderRegister(mainContainer) {
             mainContainer.innerHTML = `
-                <div class="max-w-2xl">
-                    <h2 class="text-3xl font-bold text-white tracking-tight mb-8">Settings</h2>
-                    ${adminHtml}
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6">
-                        <h3 class="text-lg font-bold text-white flex items-center gap-2 mb-4"><i data-lucide="key" class="w-5 h-5"></i> Access Configuration</h3>
-                        <div>
-                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Your API Key ${state.user.isAdmin ? '(Not needed for Admins)' : ''}</label>
-                            <div class="flex gap-3">
-                                <input type="password" id="input-user-apikey" value="${state.apiKey}" class="flex-1 bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono placeholder:text-zinc-700" placeholder="SNC-XXXXXXXXXXXXX" ${state.user.isAdmin ? 'disabled' : ''}>
-                                <button onclick="saveApiKey()" class="bg-surface-700 hover:bg-surface-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium border border-zinc-700/50" ${state.user.isAdmin ? 'hidden' : ''}>Save Key</button>
-                            </div>
+                <div class="max-w-6xl mx-auto">
+                    <div class="flex justify-between items-center mb-8">
+                        <div><h2 class="text-3xl font-bold text-white tracking-tight">Key Management</h2><p class="text-zinc-500 text-sm mt-1">Admin control over user access keys.</p></div>
+                        <div class="flex gap-2">
+                            <input type="number" id="input-admin-days" value="30" class="w-24 bg-[#0a0a0c] border border-zinc-700 rounded-lg p-2.5 text-white focus:border-brand-500 outline-none text-sm" placeholder="Days">
+                            <button onclick="generateApiKey()" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg min-w-[140px] flex items-center justify-center">Generate Key</button>
                         </div>
+                    </div>
+                    
+                    <div id="admin-key-result" class="hidden mb-6 p-4 bg-brand-500/10 border border-brand-500/20 rounded-xl flex items-center justify-between">
+                        <div><p class="text-xs text-brand-400 font-bold uppercase mb-1">New Key Generated</p><code id="admin-new-key" class="text-white font-mono text-lg"></code></div>
+                        <button onclick="copyToClipboard(document.getElementById('admin-new-key').innerText, 'Key Copied!')" class="bg-surface-800 hover:bg-surface-700 text-white px-4 py-2 rounded-lg text-sm font-medium border border-zinc-700/50">Copy</button>
+                    </div>
+
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl overflow-hidden">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-surface-900/50 border-b border-zinc-800 text-zinc-400">
+                                <tr><th class="p-4 font-medium">API Key</th><th class="p-4 font-medium">Claimed By</th><th class="p-4 font-medium">Expires In</th><th class="p-4 font-medium text-right">Actions</th></tr>
+                            </thead>
+                            <tbody id="keys-table-body" class="divide-y divide-zinc-800/50">
+                                <tr><td colspan="4" class="p-8 text-center text-zinc-500">Loading keys...</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             `;
+            fetchAdminKeys();
         }
 
-        // --- Admin Functions ---
+        function renderRegisterTable() {
+            const tbody = document.getElementById('keys-table-body');
+            if(!tbody) return;
+            const keys = Object.entries(state.adminKeys);
+            
+            if (keys.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-zinc-500">No API keys generated yet.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = keys.map(([keyStr, data]) => {
+                const daysLeft = Math.max(0, Math.ceil((data.expiresAt - Date.now()) / (1000 * 60 * 60 * 24)));
+                const userDisplay = data.userId ? `<div class="flex items-center gap-2"><div class="w-6 h-6 rounded bg-brand-500/20 flex items-center justify-center text-[10px] text-brand-400 uppercase border border-brand-500/30">${data.username.charAt(0)}</div><div><p class="text-white font-medium">${data.username}</p><p class="text-[10px] text-zinc-500">${data.userId}</p></div></div>` : `<span class="text-zinc-500 italic">Unclaimed</span>`;
+                const expiredStyle = daysLeft === 0 ? "text-red-400 font-bold" : "text-emerald-400 font-medium";
+                
+                return `
+                <tr class="hover:bg-surface-700/30 transition-colors">
+                    <td class="p-4 font-mono text-zinc-300 text-xs">${keyStr}</td>
+                    <td class="p-4">${userDisplay}</td>
+                    <td class="p-4 ${expiredStyle}">${daysLeft} Days</td>
+                    <td class="p-4 flex justify-end gap-2">
+                        <button onclick="extendKey('${keyStr}')" class="px-3 py-1.5 bg-surface-700 hover:bg-surface-600 text-white rounded-md text-xs border border-zinc-700/50 transition-colors">Extend</button>
+                        <button onclick="revokeKey('${keyStr}')" class="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-md text-xs border border-red-500/20 transition-colors">Revoke</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
         async function generateApiKey() {
             const days = document.getElementById('input-admin-days').value;
             try {
                 const res = await fetch('/api/admin/generate-key', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ discordId: state.user.id, days: days })
                 });
                 const data = await res.json();
@@ -299,20 +368,54 @@
                     document.getElementById('admin-key-result').classList.remove('hidden');
                     document.getElementById('admin-new-key').innerText = data.key;
                     showToast('New API Key generated!');
-                } else {
-                    showToast(data.error || 'Failed to generate key', 'error');
-                }
-            } catch (err) {
-                showToast('Server error', 'error');
-            }
+                    fetchAdminKeys(); // refresh table
+                } else { showToast(data.error || 'Failed to generate key', 'error'); }
+            } catch (err) { showToast('Server error', 'error'); }
         }
 
-        function saveApiKey() {
-            const key = document.getElementById('input-user-apikey').value.trim();
-            state.apiKey = key;
-            localStorage.setItem('sanctuary_api_key', key);
-            showToast('API Key saved locally!');
-            checkApiKeyStatus(); // Re-check expiration
+        async function extendKey(keyStr) {
+            const days = prompt("How many days to extend?", "30");
+            if(!days) return;
+            try {
+                await fetch('/api/admin/extend-key', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ targetKey: keyStr, days: days, discordId: state.user.id })
+                });
+                showToast('Key extended successfully');
+                fetchAdminKeys();
+            } catch(e) {}
+        }
+
+        async function revokeKey(keyStr) {
+            if(!confirm("Revoke this key instantly? The user will lose access.")) return;
+            try {
+                await fetch('/api/admin/revoke-key', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ targetKey: keyStr, discordId: state.user.id })
+                });
+                showToast('Key revoked', 'error');
+                fetchAdminKeys();
+            } catch(e) {}
+        }
+
+        // --- Settings Tab ---
+        function renderSettings(mainContainer) {
+            mainContainer.innerHTML = `
+                <div class="max-w-2xl">
+                    <h2 class="text-3xl font-bold text-white tracking-tight mb-8">Settings</h2>
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6">
+                        <h3 class="text-lg font-bold text-white flex items-center gap-2 mb-4"><i data-lucide="key" class="w-5 h-5"></i> Access Configuration</h3>
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Your API Key ${state.user.isAdmin ? '(Not needed for Admins)' : ''}</label>
+                            <div class="flex gap-3">
+                                <input type="password" id="input-user-apikey" value="${state.apiKey}" class="flex-1 bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono placeholder:text-zinc-700" placeholder="xxxxxxxxxxxx" ${state.user.isAdmin ? 'disabled' : ''}>
+                                <button onclick="saveApiKey()" class="bg-surface-700 hover:bg-surface-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium border border-zinc-700/50" ${state.user.isAdmin ? 'hidden' : ''}>Save & Link Key</button>
+                            </div>
+                            <p class="text-xs text-zinc-500 mt-2">API Keys are required to upload or edit scripts. Contact an Admin if you need a key.</p>
+                        </div>
+                    </div>
+                </div>
+            `;
         }
 
         // --- Project & Script Management ---
@@ -367,8 +470,9 @@
                                 <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-500/10 text-brand-400 border border-brand-500/20">${s.version}</span>
                             </div>
                             <div class="flex items-center gap-3 mt-1.5 text-[11px] text-zinc-400 font-medium tracking-wide">
-                                <span class="flex items-center gap-1.5 bg-surface-800 px-2 py-0.5 rounded border border-zinc-700/50"><i data-lucide="gamepad-2" class="w-3 h-3 text-zinc-500"></i> ${s.gameId}</span>
-                                <span class="flex items-center gap-1.5"><i data-lucide="calendar" class="w-3 h-3 text-zinc-500"></i> ${s.date}</span>
+                                <span class="flex items-center gap-1.5 bg-surface-800 px-2 py-0.5 rounded border border-zinc-700/50" title="Game ID"><i data-lucide="gamepad-2" class="w-3 h-3 text-zinc-500"></i> ${s.gameId || 'Universal'}</span>
+                                <span class="flex items-center gap-1.5 bg-surface-800 px-2 py-0.5 rounded border border-zinc-700/50" title="Total Executions"><i data-lucide="activity" class="w-3 h-3 text-brand-500"></i> ${s.executions || 0}</span>
+                                <span class="flex items-center gap-1.5 text-zinc-500"><i data-lucide="calendar" class="w-3 h-3 text-zinc-600"></i> ${s.date}</span>
                             </div>
                         </div>
                     </div>
@@ -381,7 +485,6 @@
             `).join('');
         }
 
-        // Modals
         function closeModal() { document.getElementById('modal-container').innerHTML = ''; }
 
         function openCreateProjectModal() {
@@ -403,19 +506,8 @@
             const name = document.getElementById('input-cp-name').value.trim();
             if (!name) return showToast('Please enter a project name', 'error');
             const id = await generateSHA256(name);
-            
-            // Optimistically add to state
-            state.projects.push({ id, name, expanded: true, loaderCode: "", scripts: [] });
-            
-            try {
-                await syncToServer();
-                closeModal();
-                showToast('Project created');
-                renderApp();
-            } catch (err) {
-                // Revert on fail
-                state.projects.pop();
-            }
+            state.projects.push({ id, name, expanded: true, loaderCode: "", webhookUrl: "", scripts: [] });
+            try { await syncToServer(); closeModal(); showToast('Project created'); renderApp(); } catch (err) { state.projects.pop(); }
         }
 
         function openProjectSettings(projectId) {
@@ -424,7 +516,10 @@
             <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-md shadow-2xl modal-animate ring-1 ring-white/5">
                     <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2"><i data-lucide="settings-2" class="text-zinc-400 w-5 h-5"></i> Project Settings</h3>
-                    <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Change Project Name</label><input type="text" id="input-ps-name" value="${project.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
+                    <div class="space-y-4">
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Change Project Name</label><input type="text" id="input-ps-name" value="${project.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
+                        <div><label class="block text-xs font-bold text-brand-400 mb-1.5 uppercase flex items-center gap-1.5"><i data-lucide="bell-ring" class="w-3.5 h-3.5"></i> Execution Webhook URL</label><input type="text" id="input-ps-webhook" value="${project.webhookUrl || ''}" placeholder="https://discord.com/api/webhooks/..." class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none text-xs"></div>
+                    </div>
                     <div class="flex items-center justify-between mt-8 pt-4 border-t border-zinc-800/50">
                         <button onclick="deleteProject('${projectId}')" class="text-red-400 hover:bg-red-500/10 px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete Project</button>
                         <div class="flex gap-2">
@@ -439,32 +534,21 @@
 
         async function saveProjectSettings(projectId) {
             const name = document.getElementById('input-ps-name').value.trim();
+            const webhook = document.getElementById('input-ps-webhook').value.trim();
             if (!name) return showToast('Project name cannot be empty', 'error');
             const project = state.projects.find(p => p.id === projectId);
-            const oldName = project.name;
-            project.name = name;
-            try {
-                await syncToServer();
-                closeModal();
-                showToast('Project updated');
-                renderApp();
-            } catch (err) {
-                project.name = oldName; // revert
-            }
+            const oldName = project.name; const oldWebhook = project.webhookUrl;
+            project.name = name; project.webhookUrl = webhook;
+            try { await syncToServer(); closeModal(); showToast('Project updated'); renderApp(); } 
+            catch (err) { project.name = oldName; project.webhookUrl = oldWebhook; }
         }
 
         async function deleteProject(projectId) {
             const pIndex = state.projects.findIndex(p => p.id === projectId);
             const pStore = state.projects[pIndex];
             state.projects.splice(pIndex, 1);
-            try {
-                await syncToServer();
-                closeModal();
-                showToast('Project deleted');
-                renderApp();
-            } catch (err) {
-                state.projects.splice(pIndex, 0, pStore); // revert
-            }
+            try { await syncToServer(); closeModal(); showToast('Project deleted'); renderApp(); } 
+            catch (err) { state.projects.splice(pIndex, 0, pStore); }
         }
 
         function openAddScriptModal(projectId) {
@@ -475,7 +559,7 @@
                     <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2"><i data-lucide="file-code" class="text-brand-400 w-5 h-5"></i> Add New Script</h3>
                     <div class="space-y-5">
                         <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Custom Script Name</label><input type="text" id="input-as-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Roblox Game ID</label><input type="text" id="input-as-gameid" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Roblox Game ID</label><input type="text" id="input-as-gameid" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono" placeholder="Leave empty for Universal Script"></div>
                         <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Upload File <span class="text-zinc-500 font-normal">(.lua only)</span></label>
                             <div id="drop-zone" class="border-2 border-dashed border-zinc-700 rounded-xl p-8 text-center bg-[#0a0a0c] hover:bg-surface-800 hover:border-brand-500/50 cursor-pointer relative"><input type="file" accept=".lua" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)"><div class="bg-surface-800 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"><i data-lucide="upload-cloud" class="w-6 h-6 text-brand-400"></i></div><p class="text-sm text-zinc-300 font-medium" id="drop-text">Drag & drop your file here</p></div>
                         </div>
@@ -486,24 +570,43 @@
             lucide.createIcons(); setupDragDrop();
         }
 
+        function handleFileSelect(e) { handleFiles(e.target.files); }
+        function handleFiles(files) {
+            if(files && files.length > 0) {
+                const file = files.item(0); 
+                if(file && file.name && file.name.toLowerCase().endsWith('.lua')) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        state.draftScript.file = file; state.draftScript.code = event.target.result; 
+                        document.getElementById('drop-text').innerHTML = `<span class="text-emerald-400 font-semibold bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">${file.name}</span>`;
+                    };
+                    reader.readAsText(file);
+                } else { showToast('Only .lua files are permitted', 'error'); }
+            }
+        }
+        function setupDragDrop() {
+            const dropZone = document.getElementById('drop-zone');
+            if(!dropZone) return;
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, false));
+            ['dragenter', 'dragover'].forEach(evt => dropZone.addEventListener(evt, () => dropZone.classList.add('border-brand-500', 'bg-brand-500/5'), false));
+            ['dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, () => dropZone.classList.remove('border-brand-500', 'bg-brand-500/5'), false));
+            dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+        }
+
         async function submitAddScript() {
             const name = document.getElementById('input-as-name').value.trim();
-            const gameId = document.getElementById('input-as-gameid').value.trim();
+            const gameId = document.getElementById('input-as-gameid').value.trim(); // Allowed to be empty for universal
             const { file, code, projectId } = state.draftScript;
-            if(!name || !gameId || !file || !code) return showToast('Please fill all fields and select a valid Lua file.', 'error');
+            if(!name || !file || !code) return showToast('Please provide a name and select a valid Lua file.', 'error');
 
             const project = state.projects.find(p => p.id === projectId);
             const scriptId = await generateSHA256(name + gameId + "script");
             
-            const newScript = { id: scriptId, name, gameId, status: 'Active', version: 'v0.0.1', date: getShortDate(), fileName: file.name, code };
+            const newScript = { id: scriptId, name, gameId, status: 'Active', version: 'v0.0.1', date: getShortDate(), fileName: file.name, code, executions: 0 };
             project.scripts.push(newScript);
             
-            try {
-                await syncToServer();
-                closeModal(); showToast('Script uploaded successfully'); renderApp();
-            } catch(err) {
-                project.scripts.pop(); // Revert
-            }
+            try { await syncToServer(); closeModal(); showToast('Script uploaded successfully'); renderApp(); } 
+            catch(err) { project.scripts.pop(); }
         }
 
         function openEditScriptModal(projectId, scriptId) {
@@ -515,27 +618,13 @@
                     <div class="flex justify-between items-center mb-5"><h3 class="text-xl font-bold text-white flex items-center gap-2"><i data-lucide="edit" class="text-brand-400 w-5 h-5"></i> Edit Script</h3><span class="px-2.5 py-1 rounded text-xs font-bold bg-brand-500/10 text-brand-400 border border-brand-500/20">${script.version}</span></div>
                     <div class="space-y-4">
                         <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Script Name</label><input type="text" id="input-es-name" value="${script.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Game ID</label><input type="text" id="input-es-gameid" value="${script.gameId}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Game ID</label><input type="text" id="input-es-gameid" value="${script.gameId || ''}" placeholder="Leave empty for Universal Script" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono"></div>
                         <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Reupload File <span class="text-brand-400 normal-case">(Bumps Version)</span></label><input type="file" id="input-es-file" accept=".lua" class="w-full text-sm text-zinc-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:bg-surface-700 file:text-white hover:file:bg-surface-600 bg-[#0a0a0c] border border-zinc-700 rounded-lg outline-none cursor-pointer"></div>
                     </div>
                     <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50"><button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white rounded-lg">Cancel</button><button onclick="saveEditScript('${projectId}', '${scriptId}')" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm">Save Changes</button></div>
                 </div>
             </div>`;
             lucide.createIcons();
-        }
-
-        async function toggleScriptStatusDirect(projectId, scriptId) {
-            const project = state.projects.find(p => p.id === projectId);
-            const script = project.scripts.find(s => s.id === scriptId);
-            
-            script.status = script.status === 'Active' ? 'Inactive' : 'Active';
-            try {
-                await syncToServer();
-                renderApp();
-                showToast(`Script ${script.status === 'Active' ? 'enabled' : 'disabled'}`);
-            } catch (err) {
-                script.status = script.status === 'Active' ? 'Inactive' : 'Active'; // revert
-            }
         }
 
         async function saveEditScript(projectId, scriptId) {
@@ -545,19 +634,14 @@
             const newGameId = document.getElementById('input-es-gameid').value.trim();
             const fileInput = document.getElementById('input-es-file');
 
-            if(!newName || !newGameId) return showToast('Name and Game ID cannot be empty', 'error');
+            if(!newName) return showToast('Script name cannot be empty', 'error');
 
             const oldState = {...script};
-            script.name = newName;
-            script.gameId = newGameId;
+            script.name = newName; script.gameId = newGameId;
 
             const processSave = async () => {
-                try {
-                    await syncToServer();
-                    closeModal(); showToast('Script updated successfully'); renderApp();
-                } catch (err) {
-                    Object.assign(script, oldState); // revert
-                }
+                try { await syncToServer(); closeModal(); showToast('Script updated successfully'); renderApp(); } 
+                catch (err) { Object.assign(script, oldState); }
             };
 
             if(fileInput.files && fileInput.files.length > 0) {
@@ -581,13 +665,8 @@
             const sIndex = project.scripts.findIndex(s => s.id === scriptId);
             const sStore = project.scripts[sIndex];
             project.scripts.splice(sIndex, 1);
-            
-            try {
-                await syncToServer();
-                showToast('Script deleted'); renderApp();
-            } catch (err) {
-                project.scripts.splice(sIndex, 0, sStore); // revert
-            }
+            try { await syncToServer(); showToast('Script deleted'); renderApp(); } 
+            catch (err) { project.scripts.splice(sIndex, 0, sStore); }
         }
 
         function openCustomLoaderModal(projectId) {
@@ -614,8 +693,21 @@
         function autoGenerateLoader(projectId) {
             if (window.loaderEditor) {
                 const project = state.projects.find(p => p.id === projectId);
-                let scriptsTable = project.scripts.map(s => `    [${s.gameId}] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`).join('');
-                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\n\nlocal Script = Scripts[game.GameId]\nif Script then\n    loadstring(game:HttpGet(Script))()\nelse\n    -- For the user to decide\nend`);
+                let scriptsTable = "";
+                
+                // Smart generator: Supports both Universal and Game-Specific scripts
+                if (project && project.scripts) {
+                    project.scripts.forEach(s => {
+                        if (s.gameId && s.gameId !== "") {
+                            scriptsTable += `    [${s.gameId}] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`;
+                        } else {
+                            scriptsTable += `    ["Universal"] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`;
+                        }
+                    });
+                }
+                
+                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\n\nlocal Script = Scripts[game.GameId] or Scripts["Universal"]\nif Script then\n    loadstring(game:HttpGet(Script))()\nelse\n    warn("Sanctuary: No valid script found for this game.")\nend`);
+                showToast('Auto-generated loader template');
             }
         }
 
@@ -623,14 +715,9 @@
 
         async function saveLoaderCode(projectId) {
             const project = state.projects.find(p => p.id === projectId);
-            const oldVal = project.loaderCode;
-            project.loaderCode = window.loaderEditor.getValue();
-            try {
-                await syncToServer();
-                closeModal(); showToast('Loader code saved');
-            } catch (err) {
-                project.loaderCode = oldVal;
-            }
+            const oldVal = project.loaderCode; project.loaderCode = window.loaderEditor.getValue();
+            try { await syncToServer(); closeModal(); showToast('Loader code saved'); } 
+            catch (err) { project.loaderCode = oldVal; }
         }
 
         initApp();
