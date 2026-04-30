@@ -9,6 +9,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/lua/lua.min.js"></script>
+    <!-- Lua Syntax Parser -->
+    <script src="https://unpkg.com/luaparse@0.3.1/luaparse.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <script>
@@ -55,6 +57,13 @@
                 <i data-lucide="settings" class="w-5 h-5"></i> Settings
             </button>
         </nav>
+
+        <!-- Logout Button Area -->
+        <div id="logout-container" class="p-4 border-t border-zinc-800/50 hidden">
+            <button onclick="logout()" class="w-full flex items-center gap-3 px-4 py-3 rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-all text-sm font-medium">
+                <i data-lucide="log-out" class="w-5 h-5"></i> Logout
+            </button>
+        </div>
     </aside>
 
     <main class="flex-1 overflow-y-auto relative bg-[#030303] flex flex-col">
@@ -147,6 +156,9 @@
                     regBtn.classList.remove('hidden');
                     regBtn.classList.add('flex');
                 }
+                
+                // Show Logout button
+                document.getElementById('logout-container').classList.remove('hidden');
                 
                 await loadFromServer();
                 checkApiKeyStatus();
@@ -247,6 +259,13 @@
                 showToast(err.message || 'Failed to save. Check your API key.', 'error');
                 throw err; 
             }
+        }
+
+        function logout() {
+            localStorage.removeItem('sanctuary_user');
+            localStorage.removeItem('sanctuary_api_key');
+            localStorage.removeItem('sanctuary_data');
+            window.location.reload();
         }
 
         // --- Routing / Tabs ---
@@ -599,6 +618,16 @@
             const { file, code, projectId } = state.draftScript;
             if(!name || !file || !code) return showToast('Please provide a name and select a valid Lua file.', 'error');
 
+            // --- Syntax Checking Before Upload ---
+            if (typeof luaparse !== 'undefined') {
+                try {
+                    luaparse.parse(code, { comments: false });
+                } catch (err) {
+                    const proceed = confirm(`⚠️ Lua Syntax Error Detected:\n\n${err.message}\n\n(Note: If your script uses Roblox Luau features like custom types or +=, this might be a false positive.)\n\nDo you still want to upload this script?`);
+                    if (!proceed) return;
+                }
+            }
+
             const project = state.projects.find(p => p.id === projectId);
             const scriptId = await generateSHA256(name + gameId + "script");
             
@@ -639,7 +668,17 @@
             const oldState = {...script};
             script.name = newName; script.gameId = newGameId;
 
-            const processSave = async () => {
+            const processSave = async (codeToCheck) => {
+                // --- Syntax Checking Before Save ---
+                if (codeToCheck && typeof luaparse !== 'undefined') {
+                    try {
+                        luaparse.parse(codeToCheck, { comments: false });
+                    } catch (err) {
+                        const proceed = confirm(`⚠️ Lua Syntax Error Detected:\n\n${err.message}\n\n(Note: If your script uses Roblox Luau features like custom types or +=, this might be a false positive.)\n\nDo you still want to save these changes?`);
+                        if (!proceed) { Object.assign(script, oldState); return; }
+                    }
+                }
+
                 try { await syncToServer(); closeModal(); showToast('Script updated successfully'); renderApp(); } 
                 catch (err) { Object.assign(script, oldState); }
             };
@@ -651,13 +690,13 @@
                     reader.onload = async (event) => {
                         script.version = incrementVersion(script.version);
                         script.fileName = file.name; script.code = event.target.result; script.date = getShortDate();
-                        await processSave();
+                        await processSave(event.target.result);
                     };
                     reader.readAsText(file);
                     return;
                 }
             }
-            await processSave();
+            await processSave(null);
         }
 
         async function deleteScript(projectId, scriptId) {
