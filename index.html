@@ -9,8 +9,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/lua/lua.min.js"></script>
-    <!-- Lua Syntax Parser -->
     <script src="https://unpkg.com/luaparse@0.3.1/luaparse.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <script>
@@ -47,6 +47,9 @@
         <div id="user-profile-area" class="p-4 border-b border-zinc-800/50"></div>
 
         <nav id="sidebar-nav" class="flex-1 p-4 space-y-1">
+            <button onclick="setTab('dashboard')" id="tab-dashboard" class="w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium">
+                <i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard
+            </button>
             <button onclick="setTab('projects')" id="tab-projects" class="w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium">
                 <i data-lucide="folder" class="w-5 h-5"></i> Projects
             </button>
@@ -57,17 +60,20 @@
                 <i data-lucide="settings" class="w-5 h-5"></i> Settings
             </button>
         </nav>
+        
+        <div id="logout-container" class="p-4 border-t border-zinc-800/50 hidden">
+            <button onclick="openLogoutModal()" class="w-full flex items-center gap-3 px-4 py-3 rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-all text-sm font-medium">
+                <i data-lucide="log-out" class="w-5 h-5"></i> Logout
+            </button>
+        </div>
     </aside>
 
     <main class="flex-1 overflow-y-auto relative bg-[#030303] flex flex-col">
-        <!-- Key Expiration Warning Banner -->
         <div id="key-warning-banner" class="hidden bg-orange-500/10 border-b border-orange-500/20 px-8 py-3 flex items-center justify-center gap-2 text-orange-400 text-sm font-medium">
             <i data-lucide="alert-triangle" class="w-4 h-4"></i>
-            <span>Warning: Your API Key will expire in <span id="key-expire-days" class="font-bold"></span> days. You will lose upload/edit access.</span>
+            <span>Warning: Your API Key will expire in <span id="key-expire-days" class="font-bold"></span> days.</span>
         </div>
-
         <div id="main-content" class="p-8 max-w-6xl mx-auto flex-1 w-full">
-            <!-- Loading or Login Container injected here initially -->
             <div class="flex items-center justify-center h-full">
                 <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-brand-500"></i>
             </div>
@@ -75,11 +81,11 @@
     </main>
 
     <div id="modal-container"></div>
-    <div id="toast-container" class="fixed bottom-6 right-6 z- flex flex-col gap-2 pointer-events-none"></div>
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
     <script>
         const state = {
-            activeTab: 'projects',
+            activeTab: 'dashboard',
             projects: [],
             adminKeys: {},
             user: null,
@@ -87,13 +93,11 @@
             draftScript: { projectId: null, file: null, code: null }
         };
 
-        // --- Core Utilities ---
         function showToast(message, type = 'success') {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            const isError = type === 'error';
             toast.className = `toast-enter pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border border-zinc-800 bg-[#111113] shadow-2xl text-sm font-semibold text-white`;
-            toast.innerHTML = `<i data-lucide="${isError ? 'alert-circle' : 'check-circle'}" class="w-[18px] h-[18px] fill-white text-[#111113]"></i><span>${message}</span>`;
+            toast.innerHTML = `<i data-lucide="${type === 'error' ? 'alert-circle' : 'check-circle'}" class="w-[18px] h-[18px] fill-white text-[#111113]"></i><span>${message}</span>`;
             container.appendChild(toast);
             lucide.createIcons();
             setTimeout(() => { toast.classList.remove('toast-enter'); toast.classList.add('toast-leave'); setTimeout(() => toast.remove(), 300); }, 3000);
@@ -102,7 +106,7 @@
         function copyToClipboard(text, successMsg) {
             const textArea = document.createElement("textarea"); textArea.value = text; textArea.style.position = "fixed"; 
             document.body.appendChild(textArea); textArea.focus(); textArea.select();
-            try { document.execCommand('copy'); showToast(successMsg || 'Copied to clipboard!'); } catch (err) { showToast('Failed to copy text', 'error'); }
+            try { document.execCommand('copy'); showToast(successMsg || 'Copied!'); } catch (err) { showToast('Failed to copy', 'error'); }
             document.body.removeChild(textArea);
         }
 
@@ -114,30 +118,22 @@
 
         function incrementVersion(ver) {
             let parts = ver.replace('v', '').split('.');
-            let patch = parseInt(parts.pop() || 0) + 1;
-            parts.push(patch);
-            return `v${parts.join('.')}`;
+            let patch = parseInt(parts.pop() || 0) + 1; parts.push(patch); return `v${parts.join('.')}`;
         }
+        
         function getShortDate() {
             const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             const today = new Date(); return `${months.at(today.getMonth())} ${today.getDate()}`;
         }
 
-        // --- Authentication & Syncing ---
         async function initApp() {
             const userData = localStorage.getItem('sanctuary_user');
             if (userData) {
                 state.user = JSON.parse(userData);
                 document.getElementById('main-sidebar').classList.remove('hidden');
                 
-                // Discord Avatar Rendering
-                const avatarUrl = state.user.avatar && state.user.avatar !== "" 
-                    ? `https://cdn.discordapp.com/avatars/${state.user.id}/${state.user.avatar}.png`
-                    : null;
-                    
-                const avatarHtml = avatarUrl 
-                    ? `<img src="${avatarUrl}" class="w-10 h-10 rounded-full border border-brand-500/30 object-cover shadow-md">`
-                    : `<div class="w-10 h-10 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 font-bold uppercase border border-brand-500/30">${state.user.username.charAt(0)}</div>`;
+                const avatarUrl = state.user.avatar && state.user.avatar !== "" ? `https://cdn.discordapp.com/avatars/${state.user.id}/${state.user.avatar}.png` : null;
+                const avatarHtml = avatarUrl ? `<img src="${avatarUrl}" class="w-10 h-10 rounded-full border border-brand-500/30 object-cover shadow-md">` : `<div class="w-10 h-10 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 font-bold uppercase border border-brand-500/30">${state.user.username.charAt(0)}</div>`;
 
                 document.getElementById('user-profile-area').innerHTML = `
                     <div class="flex items-center gap-3">
@@ -153,9 +149,9 @@
                 
                 if (state.user.isAdmin) {
                     const regBtn = document.getElementById('tab-register');
-                    regBtn.classList.remove('hidden');
-                    regBtn.classList.add('flex');
+                    regBtn.classList.remove('hidden'); regBtn.classList.add('flex');
                 }
+                document.getElementById('logout-container').classList.remove('hidden');
                 
                 await loadFromServer();
                 checkApiKeyStatus();
@@ -171,7 +167,7 @@
                     <div class="bg-surface-800 border border-zinc-800/80 rounded-2xl p-10 max-w-md w-full text-center shadow-2xl modal-animate ring-1 ring-white/5">
                         <div class="w-16 h-16 bg-brand-500/10 text-brand-400 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-brand-500/20"><i data-lucide="shield" class="w-8 h-8"></i></div>
                         <h2 class="text-3xl font-bold text-white mb-2 tracking-tight">Luau-Auth</h2>
-                        <p class="text-zinc-400 text-sm mb-8">Authenticate with Discord to access the script manager dashboard.</p>
+                        <p class="text-zinc-400 text-sm mb-8">Authenticate with Discord to access the dashboard.</p>
                         <a href="/api/auth/discord" class="w-full flex items-center justify-center gap-2 bg-[#5865F2] hover:bg-[#4752C4] text-white py-3 rounded-xl text-sm font-medium transition-all shadow-lg shadow-[#5865F2]/20 border border-[#5865F2]/50 hover:border-[#5865F2]">
                             <i data-lucide="log-in" class="w-5 h-5"></i> Login with Discord
                         </a>
@@ -212,13 +208,9 @@
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
                 
-                state.apiKey = key;
-                localStorage.setItem('sanctuary_api_key', key);
-                showToast('API Key saved & linked!');
-                checkApiKeyStatus();
-            } catch (err) {
-                showToast(err.message, 'error');
-            }
+                state.apiKey = key; localStorage.setItem('sanctuary_api_key', key);
+                showToast('API Key saved!'); checkApiKeyStatus();
+            } catch (err) { showToast(err.message, 'error'); }
         }
 
         async function loadFromServer() {
@@ -226,7 +218,7 @@
             if (localData) state.projects = JSON.parse(localData);
 
             try {
-                const res = await fetch('/api/sync');
+                const res = await fetch(`/api/sync?discordId=${state.user.id}`);
                 if (res.ok) {
                     const data = await res.json();
                     if (data.projects && data.projects.length > 0) {
@@ -236,11 +228,8 @@
                         await syncToServer();
                     }
                 }
-            } catch (err) {
-                console.warn('Backend disconnected.');
-            } finally {
-                renderApp();
-            }
+            } catch (err) {} 
+            finally { renderApp(); }
         }
 
         async function syncToServer() {
@@ -252,10 +241,7 @@
                 });
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
-            } catch (err) {
-                showToast(err.message || 'Failed to save. Check your API key.', 'error');
-                throw err; 
-            }
+            } catch (err) { showToast(err.message || 'Failed to save. Check key.', 'error'); throw err; }
         }
 
         function openLogoutModal() {
@@ -264,7 +250,7 @@
                 <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-sm shadow-2xl modal-animate ring-1 ring-white/5 text-center">
                     <div class="w-16 h-16 bg-red-500/10 text-red-400 rounded-full flex items-center justify-center mx-auto mb-4"><i data-lucide="log-out" class="w-8 h-8"></i></div>
                     <h3 class="text-xl font-bold text-white mb-2">Sign Out</h3>
-                    <p class="text-sm text-zinc-400 mb-6">Are you sure you want to sign out or switch accounts? You will need to re-authenticate with Discord to access Luau-Auth.</p>
+                    <p class="text-sm text-zinc-400 mb-6">Are you sure you want to sign out or switch accounts?</p>
                     <div class="flex gap-3">
                         <button onclick="closeModal()" class="flex-1 px-4 py-2.5 bg-surface-700 hover:bg-surface-600 text-white rounded-lg text-sm font-medium transition-all">Cancel</button>
                         <button onclick="confirmLogout()" class="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-all">Sign Out</button>
@@ -275,17 +261,16 @@
         }
 
         function confirmLogout() {
-            localStorage.removeItem('sanctuary_user');
-            localStorage.removeItem('sanctuary_api_key');
+            localStorage.removeItem('sanctuary_user'); localStorage.removeItem('sanctuary_api_key'); localStorage.removeItem('sanctuary_data');
             window.location.reload();
         }
 
-        // --- Routing / Tabs ---
         function setTab(tab) { state.activeTab = tab; renderApp(); }
 
         function renderApp() {
             if (!state.user) return;
 
+            document.getElementById('tab-dashboard').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'dashboard' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
             document.getElementById('tab-projects').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'projects' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
             document.getElementById('tab-settings').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'settings' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
             if(document.getElementById('tab-register')) {
@@ -294,16 +279,13 @@
 
             const main = document.getElementById('main-content');
             
-            if (state.activeTab === 'projects') {
+            if (state.activeTab === 'dashboard') {
+                renderDashboard(main);
+            } else if (state.activeTab === 'projects') {
                 main.innerHTML = `
                     <div class="flex justify-between items-center mb-8">
-                        <div>
-                            <h2 class="text-3xl font-bold text-white tracking-tight">Projects</h2>
-                            <p class="text-zinc-500 text-sm mt-1">Manage your script hubs and loaders.</p>
-                        </div>
-                        <button onclick="openCreateProjectModal()" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-all shadow-[0_0_15px_rgba(79,70,229,0.3)]">
-                            <i data-lucide="plus" class="w-5 h-5"></i> Create Project
-                        </button>
+                        <div><h2 class="text-3xl font-bold text-white tracking-tight">Projects</h2><p class="text-zinc-500 text-sm mt-1">Manage your script hubs and loaders.</p></div>
+                        <button onclick="openCreateProjectModal()" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-all shadow-[0_0_15px_rgba(79,70,229,0.3)]"><i data-lucide="plus" class="w-5 h-5"></i> Create Project</button>
                     </div>
                     <div class="space-y-4">${renderProjectsList()}</div>
                 `;
@@ -315,7 +297,110 @@
             lucide.createIcons();
         }
 
-        // --- Admin Register Tab ---
+        function renderDashboard(mainContainer) {
+            let totalExecutions = 0;
+            let topScript = { name: "N/A", execs: 0 };
+            
+            state.projects.forEach(p => p.scripts.forEach(s => {
+                const execs = s.executions || 0;
+                totalExecutions += execs;
+                if (execs >= topScript.execs) {
+                    topScript = { name: s.name, execs: execs };
+                }
+            }));
+
+            mainContainer.innerHTML = `
+                <div class="flex justify-between items-center mb-8">
+                    <div><h2 class="text-3xl font-bold text-white tracking-tight">Dashboard Overview</h2><p class="text-zinc-500 text-sm mt-1">Track analytics and real-time script executions.</p></div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 flex items-center gap-4">
+                        <div class="w-12 h-12 bg-brand-500/10 rounded-xl flex items-center justify-center border border-brand-500/20 text-brand-400"><i data-lucide="activity" class="w-6 h-6"></i></div>
+                        <div><p class="text-zinc-400 text-sm font-medium">Total Executions</p><p class="text-2xl font-bold text-white">${totalExecutions.toLocaleString()}</p></div>
+                    </div>
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 flex items-center gap-4">
+                        <div class="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center border border-emerald-500/20 text-emerald-400"><i data-lucide="flame" class="w-6 h-6"></i></div>
+                        <div><p class="text-zinc-400 text-sm font-medium">Most Executed Script</p><p class="text-xl font-bold text-white truncate max-w-[200px]">${topScript.name} <span class="text-sm font-medium text-emerald-500 ml-2">(${topScript.execs})</span></p></div>
+                    </div>
+                </div>
+
+                <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6">
+                    <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-4 h-4 text-brand-400"></i> Execution History (Last 30 Days)</h3>
+                    <div class="h-[400px] w-full relative">
+                        <canvas id="executionChart"></canvas>
+                    </div>
+                </div>
+            `;
+            
+            const ctx = document.getElementById('executionChart').getContext('2d');
+            const datesSet = new Set();
+            const totalHistory = {};
+
+            state.projects.forEach(p => p.scripts.forEach(s => {
+                if(s.executionHistory) {
+                    Object.keys(s.executionHistory).forEach(d => {
+                        datesSet.add(d);
+                        totalHistory[d] = (totalHistory[d] || 0) + s.executionHistory[d];
+                    });
+                }
+            }));
+
+            // Fixed bracket stripping issue with .shift()
+            if (datesSet.size === 0) datesSet.add(new Date().toISOString().split('T').shift());
+            
+            const labels = Array.from(datesSet).sort();
+            const colors = ['#10b981', '#f43f5e', '#3b82f6', '#f59e0b', '#8b5cf6', '#d946ef', '#06b6d4'];
+            let colorIdx = 0;
+            const datasets = [];
+
+            state.projects.forEach(p => p.scripts.forEach(s => {
+                if(s.executions && s.executions > 0) {
+                    datasets.push({
+                        label: `${p.name} - ${s.name}`,
+                        data: labels.map(d => (s.executionHistory && s.executionHistory[d]) ? s.executionHistory[d] : 0),
+                        borderColor: colors[colorIdx % colors.length],
+                        backgroundColor: colors[colorIdx % colors.length],
+                        tension: 0.4,
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        fill: false
+                    });
+                    colorIdx++;
+                }
+            }));
+
+            // Fixed fatal syntax error caused by bracket stripping
+            datasets.push({
+                label: 'Total Executions',
+                data: labels.map(d => totalHistory[d] || 0),
+                borderColor: '#ffffff',
+                backgroundColor: '#ffffff',
+                borderDash: Array.of(5, 5),
+                borderWidth: 3,
+                tension: 0.4,
+                pointRadius: 0,
+                fill: false
+            });
+
+            new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#27272a' }, ticks: { color: '#a1a1aa' } },
+                        x: { grid: { display: false }, ticks: { color: '#a1a1aa' } }
+                    },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#e4e4e7', usePointStyle: true, boxWidth: 8, padding: 20 } },
+                        tooltip: { backgroundColor: '#111113', titleColor: '#fff', bodyColor: '#a1a1aa', borderColor: '#27272a', borderWidth: 1 }
+                    }
+                }
+            });
+        }
+
         async function fetchAdminKeys() {
             try {
                 const res = await fetch('/api/admin/keys', {
@@ -399,7 +484,7 @@
                     document.getElementById('admin-key-result').classList.remove('hidden');
                     document.getElementById('admin-new-key').innerText = data.key;
                     showToast('New API Key generated!');
-                    fetchAdminKeys(); // refresh table
+                    fetchAdminKeys();
                 } else { showToast(data.error || 'Failed to generate key', 'error'); }
             } catch (err) { showToast('Server error', 'error'); }
         }
@@ -412,13 +497,13 @@
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ targetKey: keyStr, days: days, discordId: state.user.id })
                 });
-                showToast('Key extended successfully');
+                showToast('Key extended');
                 fetchAdminKeys();
             } catch(e) {}
         }
 
         async function revokeKey(keyStr) {
-            if(!confirm("Revoke this key instantly? The user will lose access.")) return;
+            if(!confirm("Revoke this key instantly?")) return;
             try {
                 await fetch('/api/admin/revoke-key', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -429,7 +514,6 @@
             } catch(e) {}
         }
 
-        // --- Settings Tab ---
         function renderSettings(mainContainer) {
             mainContainer.innerHTML = `
                 <div class="max-w-2xl">
@@ -457,7 +541,6 @@
             `;
         }
 
-        // --- Project & Script Management ---
         function toggleProject(id) {
             const proj = state.projects.find(p => p.id === id);
             if (proj) proj.expanded = !proj.expanded;
@@ -496,7 +579,7 @@
         }
 
         function renderScripts(scripts, projectId) {
-            if (scripts.length === 0) return `<div class="text-sm text-zinc-500 text-center py-6 bg-surface-900/50 rounded-lg border border-zinc-800/30">No scripts added. Click "Add Script".</div>`;
+            if (scripts.length === 0) return `<div class="text-sm text-zinc-500 text-center py-6 bg-surface-900/50 rounded-lg border border-zinc-800/30">No scripts added</div>`;
             return scripts.map(s => `
                 <div class="group flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-[#121215] border border-zinc-800/80 rounded-lg hover:border-brand-500/30 transition-all">
                     <div class="flex items-center gap-4 mb-3 sm:mb-0">
@@ -599,7 +682,7 @@
                     <div class="space-y-5">
                         <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Custom Script Name</label><input type="text" id="input-as-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
                         <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Roblox Game ID</label><input type="text" id="input-as-gameid" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono" placeholder="Leave empty for Universal Script"></div>
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Upload File <span class="text-zinc-500 font-normal">(.lua only)</span></label>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Upload File</label>
                             <div id="drop-zone" class="border-2 border-dashed border-zinc-700 rounded-xl p-8 text-center bg-[#0a0a0c] hover:bg-surface-800 hover:border-brand-500/50 cursor-pointer relative"><input type="file" accept=".lua" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)"><div class="bg-surface-800 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"><i data-lucide="upload-cloud" class="w-6 h-6 text-brand-400"></i></div><p class="text-sm text-zinc-300 font-medium" id="drop-text">Drag & drop your file here</p></div>
                         </div>
                     </div>
@@ -641,7 +724,7 @@
             if (typeof luaparse !== 'undefined') {
                 try { luaparse.parse(code, { comments: false }); } 
                 catch (err) {
-                    const proceed = confirm(`⚠️ Lua Syntax Error Detected:\\n\\n${err.message}\\n\\n(Note: Luau features like custom types or += might trigger this.)\\n\\nUpload anyway?`);
+                    const proceed = confirm(`Syntax Error:\\n\\n${err.message}\\n\\nUpload anyway?`);
                     if (!proceed) return;
                 }
             }
@@ -649,10 +732,10 @@
             const project = state.projects.find(p => p.id === projectId);
             const scriptId = await generateSHA256(name + gameId + "script");
             
-            const newScript = { id: scriptId, name, gameId, status: 'Active', version: 'v0.0.1', date: getShortDate(), fileName: file.name, code, executions: 0 };
+            const newScript = { id: scriptId, name, gameId, status: 'Active', version: 'v0.0.1', date: getShortDate(), fileName: file.name, code, executions: 0, executionHistory: {} };
             project.scripts.push(newScript);
             
-            try { await syncToServer(); closeModal(); showToast('Script uploaded successfully'); renderApp(); } 
+            try { await syncToServer(); closeModal(); showToast('Script uploaded'); renderApp(); } 
             catch(err) { project.scripts.pop(); }
         }
 
@@ -690,11 +773,11 @@
                 if (codeToCheck && typeof luaparse !== 'undefined') {
                     try { luaparse.parse(codeToCheck, { comments: false }); } 
                     catch (err) {
-                        const proceed = confirm(`⚠️ Lua Syntax Error Detected:\\n\\n${err.message}\\n\\nSave anyway?`);
+                        const proceed = confirm(`Syntax Error:\\n\\n${err.message}\\n\\nSave anyway?`);
                         if (!proceed) { Object.assign(script, oldState); return; }
                     }
                 }
-                try { await syncToServer(); closeModal(); showToast('Script updated successfully'); renderApp(); } 
+                try { await syncToServer(); closeModal(); showToast('Script updated'); renderApp(); } 
                 catch (err) { Object.assign(script, oldState); }
             };
 
@@ -762,7 +845,7 @@
                         else { scriptsTable += `    ["Universal"] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`; }
                     });
                 }
-                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\n\nlocal Script = Scripts[game.GameId] or Scripts["Universal"]\nif Script then\n    loadstring(game:HttpGet(Script))()\nelse\n    warn("Luau-Auth: No valid script found for this game.")\nend`);
+                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\n\nlocal Script = Scripts[game.GameId] or Scripts["Universal"]\nif Script then\n    loadstring(game:HttpGet(Script))()\nelse\n    warn("Luau-Auth: No script found")\nend`);
             }
         }
 
