@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sanctuary | Script Manager</title>
+    <title>Luau-Auth | Script Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
@@ -34,14 +34,14 @@
         .toast-enter { animation: toastEnter 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
         .toast-leave { animation: toastLeave 0.3s cubic-bezier(0.5, 0, 0.2, 1) forwards; }
         .modal-animate { animation: fadeIn 0.2s ease-out forwards; }
-        .cm-s-sanctuary.CodeMirror { background: #121215; color: #e2e8f0; border-radius: 0.75rem; padding: 1.25rem; font-family: monospace; font-size: 13px; line-height: 1.6; border: 1px solid rgba(39, 39, 42, 0.8); height: 320px; }
+        .cm-s-luauauth.CodeMirror { background: #121215; color: #e2e8f0; border-radius: 0.75rem; padding: 1.25rem; font-family: monospace; font-size: 13px; line-height: 1.6; border: 1px solid rgba(39, 39, 42, 0.8); height: 320px; }
     </style>
 </head>
 <body class="bg-black text-zinc-100 font-sans h-screen flex overflow-hidden selection:bg-brand-500/30">
 
     <aside id="main-sidebar" class="w-64 bg-surface-900 border-r border-zinc-800 flex flex-col z-10 shadow-2xl hidden">
         <div class="p-6 border-b border-zinc-800/50">
-            <h1 class="text-xl font-bold text-white flex items-center gap-3"><div class="p-1.5 bg-brand-500/20 rounded-md"><i data-lucide="shield" class="text-brand-500 w-5 h-5"></i></div>Sanctuary</h1>
+            <h1 class="text-xl font-bold text-white flex items-center gap-3"><div class="p-1.5 bg-brand-500/20 rounded-md"><i data-lucide="shield" class="text-brand-500 w-5 h-5"></i></div>Luau-Auth</h1>
         </div>
         
         <div id="user-profile-area" class="p-4 border-b border-zinc-800/50"></div>
@@ -57,13 +57,6 @@
                 <i data-lucide="settings" class="w-5 h-5"></i> Settings
             </button>
         </nav>
-
-        <!-- Logout Button Area -->
-        <div id="logout-container" class="p-4 border-t border-zinc-800/50 hidden">
-            <button onclick="logout()" class="w-full flex items-center gap-3 px-4 py-3 rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-all text-sm font-medium">
-                <i data-lucide="log-out" class="w-5 h-5"></i> Logout
-            </button>
-        </div>
     </aside>
 
     <main class="flex-1 overflow-y-auto relative bg-[#030303] flex flex-col">
@@ -137,11 +130,18 @@
                 state.user = JSON.parse(userData);
                 document.getElementById('main-sidebar').classList.remove('hidden');
                 
+                // Discord Avatar Rendering
+                const avatarUrl = state.user.avatar && state.user.avatar !== "" 
+                    ? `https://cdn.discordapp.com/avatars/${state.user.id}/${state.user.avatar}.png`
+                    : null;
+                    
+                const avatarHtml = avatarUrl 
+                    ? `<img src="${avatarUrl}" class="w-10 h-10 rounded-full border border-brand-500/30 object-cover shadow-md">`
+                    : `<div class="w-10 h-10 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 font-bold uppercase border border-brand-500/30">${state.user.username.charAt(0)}</div>`;
+
                 document.getElementById('user-profile-area').innerHTML = `
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 font-bold uppercase border border-brand-500/30">
-                            ${state.user.username.charAt(0)}
-                        </div>
+                        ${avatarHtml}
                         <div class="overflow-hidden">
                             <p class="text-sm font-semibold text-white truncate">${state.user.username}</p>
                             <p class="text-[10px] uppercase tracking-widest text-zinc-500 font-bold flex items-center gap-1">
@@ -157,9 +157,6 @@
                     regBtn.classList.add('flex');
                 }
                 
-                // Show Logout button
-                document.getElementById('logout-container').classList.remove('hidden');
-                
                 await loadFromServer();
                 checkApiKeyStatus();
             } else {
@@ -173,7 +170,7 @@
                 <div class="flex items-center justify-center h-full">
                     <div class="bg-surface-800 border border-zinc-800/80 rounded-2xl p-10 max-w-md w-full text-center shadow-2xl modal-animate ring-1 ring-white/5">
                         <div class="w-16 h-16 bg-brand-500/10 text-brand-400 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-brand-500/20"><i data-lucide="shield" class="w-8 h-8"></i></div>
-                        <h2 class="text-3xl font-bold text-white mb-2 tracking-tight">Sanctuary Hub</h2>
+                        <h2 class="text-3xl font-bold text-white mb-2 tracking-tight">Luau-Auth</h2>
                         <p class="text-zinc-400 text-sm mb-8">Authenticate with Discord to access the script manager dashboard.</p>
                         <a href="/api/auth/discord" class="w-full flex items-center justify-center gap-2 bg-[#5865F2] hover:bg-[#4752C4] text-white py-3 rounded-xl text-sm font-medium transition-all shadow-lg shadow-[#5865F2]/20 border border-[#5865F2]/50 hover:border-[#5865F2]">
                             <i data-lucide="log-in" class="w-5 h-5"></i> Login with Discord
@@ -261,10 +258,25 @@
             }
         }
 
-        function logout() {
+        function openLogoutModal() {
+            document.getElementById('modal-container').innerHTML = `
+            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-sm shadow-2xl modal-animate ring-1 ring-white/5 text-center">
+                    <div class="w-16 h-16 bg-red-500/10 text-red-400 rounded-full flex items-center justify-center mx-auto mb-4"><i data-lucide="log-out" class="w-8 h-8"></i></div>
+                    <h3 class="text-xl font-bold text-white mb-2">Sign Out</h3>
+                    <p class="text-sm text-zinc-400 mb-6">Are you sure you want to sign out or switch accounts? You will need to re-authenticate with Discord to access Luau-Auth.</p>
+                    <div class="flex gap-3">
+                        <button onclick="closeModal()" class="flex-1 px-4 py-2.5 bg-surface-700 hover:bg-surface-600 text-white rounded-lg text-sm font-medium transition-all">Cancel</button>
+                        <button onclick="confirmLogout()" class="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-all">Sign Out</button>
+                    </div>
+                </div>
+            </div>`;
+            lucide.createIcons();
+        }
+
+        function confirmLogout() {
             localStorage.removeItem('sanctuary_user');
             localStorage.removeItem('sanctuary_api_key');
-            localStorage.removeItem('sanctuary_data');
             window.location.reload();
         }
 
@@ -422,6 +434,7 @@
             mainContainer.innerHTML = `
                 <div class="max-w-2xl">
                     <h2 class="text-3xl font-bold text-white tracking-tight mb-8">Settings</h2>
+                    
                     <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6">
                         <h3 class="text-lg font-bold text-white flex items-center gap-2 mb-4"><i data-lucide="key" class="w-5 h-5"></i> Access Configuration</h3>
                         <div>
@@ -432,6 +445,13 @@
                             </div>
                             <p class="text-xs text-zinc-500 mt-2">API Keys are required to upload or edit scripts. Contact an Admin if you need a key.</p>
                         </div>
+                    </div>
+
+                    <div class="mt-8 pt-8 border-t border-zinc-800/50">
+                        <h3 class="text-lg font-bold text-red-400 flex items-center gap-2 mb-4"><i data-lucide="log-out" class="w-5 h-5"></i> Account Actions</h3>
+                        <button onclick="openLogoutModal()" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-6 py-2.5 rounded-lg text-sm font-medium border border-red-500/20 transition-all flex items-center gap-2">
+                            Sign Out / Switch Account
+                        </button>
                     </div>
                 </div>
             `;
@@ -614,16 +634,14 @@
 
         async function submitAddScript() {
             const name = document.getElementById('input-as-name').value.trim();
-            const gameId = document.getElementById('input-as-gameid').value.trim(); // Allowed to be empty for universal
+            const gameId = document.getElementById('input-as-gameid').value.trim();
             const { file, code, projectId } = state.draftScript;
             if(!name || !file || !code) return showToast('Please provide a name and select a valid Lua file.', 'error');
 
-            // --- Syntax Checking Before Upload ---
             if (typeof luaparse !== 'undefined') {
-                try {
-                    luaparse.parse(code, { comments: false });
-                } catch (err) {
-                    const proceed = confirm(`⚠️ Lua Syntax Error Detected:\n\n${err.message}\n\n(Note: If your script uses Roblox Luau features like custom types or +=, this might be a false positive.)\n\nDo you still want to upload this script?`);
+                try { luaparse.parse(code, { comments: false }); } 
+                catch (err) {
+                    const proceed = confirm(`⚠️ Lua Syntax Error Detected:\\n\\n${err.message}\\n\\n(Note: Luau features like custom types or += might trigger this.)\\n\\nUpload anyway?`);
                     if (!proceed) return;
                 }
             }
@@ -669,16 +687,13 @@
             script.name = newName; script.gameId = newGameId;
 
             const processSave = async (codeToCheck) => {
-                // --- Syntax Checking Before Save ---
                 if (codeToCheck && typeof luaparse !== 'undefined') {
-                    try {
-                        luaparse.parse(codeToCheck, { comments: false });
-                    } catch (err) {
-                        const proceed = confirm(`⚠️ Lua Syntax Error Detected:\n\n${err.message}\n\n(Note: If your script uses Roblox Luau features like custom types or +=, this might be a false positive.)\n\nDo you still want to save these changes?`);
+                    try { luaparse.parse(codeToCheck, { comments: false }); } 
+                    catch (err) {
+                        const proceed = confirm(`⚠️ Lua Syntax Error Detected:\\n\\n${err.message}\\n\\nSave anyway?`);
                         if (!proceed) { Object.assign(script, oldState); return; }
                     }
                 }
-
                 try { await syncToServer(); closeModal(); showToast('Script updated successfully'); renderApp(); } 
                 catch (err) { Object.assign(script, oldState); }
             };
@@ -697,6 +712,14 @@
                 }
             }
             await processSave(null);
+        }
+
+        async function toggleScriptStatusDirect(projectId, scriptId) {
+            const project = state.projects.find(p => p.id === projectId);
+            const script = project.scripts.find(s => s.id === scriptId);
+            script.status = script.status === 'Active' ? 'Inactive' : 'Active';
+            try { await syncToServer(); renderApp(); showToast(`Script ${script.status === 'Active' ? 'enabled' : 'disabled'}`); } 
+            catch (err) { script.status = script.status === 'Active' ? 'Inactive' : 'Active'; }
         }
 
         async function deleteScript(projectId, scriptId) {
@@ -726,27 +749,20 @@
                 </div>
             </div>`;
             lucide.createIcons();
-            setTimeout(() => { window.loaderEditor = CodeMirror.fromTextArea(document.getElementById('loader-code-textarea'), { mode: 'lua', theme: 'sanctuary', lineNumbers: false, matchBrackets: true, indentUnit: 4 }); }, 10);
+            setTimeout(() => { window.loaderEditor = CodeMirror.fromTextArea(document.getElementById('loader-code-textarea'), { mode: 'lua', theme: 'luauauth', lineNumbers: false, matchBrackets: true, indentUnit: 4 }); }, 10);
         }
 
         function autoGenerateLoader(projectId) {
             if (window.loaderEditor) {
                 const project = state.projects.find(p => p.id === projectId);
                 let scriptsTable = "";
-                
-                // Smart generator: Supports both Universal and Game-Specific scripts
                 if (project && project.scripts) {
                     project.scripts.forEach(s => {
-                        if (s.gameId && s.gameId !== "") {
-                            scriptsTable += `    [${s.gameId}] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`;
-                        } else {
-                            scriptsTable += `    ["Universal"] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`;
-                        }
+                        if (s.gameId && s.gameId !== "") { scriptsTable += `    [${s.gameId}] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`; } 
+                        else { scriptsTable += `    ["Universal"] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`; }
                     });
                 }
-                
-                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\n\nlocal Script = Scripts[game.GameId] or Scripts["Universal"]\nif Script then\n    loadstring(game:HttpGet(Script))()\nelse\n    warn("Sanctuary: No valid script found for this game.")\nend`);
-                showToast('Auto-generated loader template');
+                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\n\nlocal Script = Scripts[game.GameId] or Scripts["Universal"]\nif Script then\n    loadstring(game:HttpGet(Script))()\nelse\n    warn("Luau-Auth: No valid script found for this game.")\nend`);
             }
         }
 
