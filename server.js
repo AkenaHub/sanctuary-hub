@@ -16,7 +16,7 @@ const ADMIN_IDS = ["1284247278957367337", "1282859051092414586"];
 // Added your live Discord credentials
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || "1499199968135876608";
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || "C7RerB6dlNqd9qMRywajtGiygfLCSfZw";
-const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || "MTQ5OTE5OTk2ODEzNTg3NjYwOA.GcLr_S.lbST-GCnId85H1Mntb1C0RUz1cfN6CT2lR7C24";
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || "MTQ5OTE5OTk2ODEzNTg3NjYwOA.GNP_Oi.FC8FHexvGFDZI8JYoWLwEoB_v2B4KuRvuGUYts";
 const REDIRECT_URI = process.env.REDIRECT_URI || "https://luau-auth-production.up.railway.app/api/auth/callback";
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
