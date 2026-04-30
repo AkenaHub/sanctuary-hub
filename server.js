@@ -183,8 +183,10 @@ app.post('/api/sync', requireValidAccess, (req, res) => {
 app.get('/raw/:projectId/:scriptId', (req, res) => {
     const { projectId, scriptId } = req.params;
     
-    const userAgent = req.headers['user-agent'] || "";
-    const isBrowser = userAgent.includes("Mozilla") || userAgent.includes("Chrome") || userAgent.includes("Safari");
+    // ANTI-SNOOP FIX: Check 'Accept' headers instead of User-Agent. 
+    // Browsers specifically ask for 'text/html' when visiting a link, but executors/scripts usually ask for '*/*' or 'text/plain'.
+    const acceptHeader = req.headers['accept'] || "";
+    const isBrowser = acceptHeader.includes("text/html");
 
     if (isBrowser) {
         res.type('text/plain');
