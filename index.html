@@ -26,32 +26,38 @@
     <style>
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
         @keyframes toastEnter { 0% { transform: translateX(100%) scale(0.9); opacity: 0; } 100% { transform: translateX(0) scale(1); opacity: 1; } }
         @keyframes toastLeave { 0% { transform: translateX(0) scale(1); opacity: 1; } 100% { transform: translateX(100%) scale(0.9); opacity: 0; } }
         @keyframes fadeIn { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
         .toast-enter { animation: toastEnter 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
         .toast-leave { animation: toastLeave 0.3s cubic-bezier(0.5, 0, 0.2, 1) forwards; }
         .modal-animate { animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .cm-s-luauauth.CodeMirror { background: #121215; color: #e2e8f0; border-radius: 0.75rem; padding: 1.25rem; font-family: monospace; font-size: 13px; line-height: 1.6; border: 1px solid rgba(39, 39, 42, 0.8); height: 320px; transition: all 0.3s ease; }
+        .cm-s-luauauth.CodeMirror { background: rgba(0, 0, 0, 0.4); color: #e2e8f0; border-radius: 0.75rem; padding: 1.25rem; font-family: monospace; font-size: 13px; line-height: 1.6; border: 1px solid rgba(255, 255, 255, 0.1); height: 320px; transition: all 0.3s ease; backdrop-filter: blur(12px); }
         button, div, input, select { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         button:hover { transform: translateY(-1px); }
         button:active { transform: translateY(1px); }
     </style>
 </head>
-<body class="bg-black text-zinc-100 font-sans h-screen flex overflow-hidden selection:bg-brand-500/30">
+<body class="bg-[#05050a] text-zinc-100 font-sans h-screen flex overflow-hidden selection:bg-brand-500/30 relative">
 
-    <aside id="main-sidebar" class="w-64 bg-surface-900 border-r border-zinc-800 flex flex-col z-10 shadow-2xl hidden transition-all duration-500">
-        <div class="p-6 border-b border-zinc-800/50 flex justify-between items-center">
-            <h1 class="text-xl font-bold text-white flex items-center gap-3"><div class="p-1.5 bg-brand-500/20 rounded-md"><i data-lucide="shield" class="text-brand-500 w-5 h-5"></i></div>Luau-Auth</h1>
+    <div class="fixed inset-0 z-0 pointer-events-none">
+        <div class="absolute top-[-10%] left-[-10%] w-[40vw] h-[40vw] bg-brand-600/20 blur-[100px] rounded-full mix-blend-screen animate-pulse"></div>
+        <div class="absolute bottom-[-10%] right-[-10%] w-[40vw] h-[40vw] bg-purple-600/20 blur-[100px] rounded-full mix-blend-screen animate-pulse" style="animation-delay: 2s;"></div>
+        <div class="absolute top-[40%] left-[60%] w-[30vw] h-[30vw] bg-blue-600/10 blur-[100px] rounded-full mix-blend-screen animate-pulse" style="animation-delay: 4s;"></div>
+    </div>
+
+    <aside id="main-sidebar" class="w-64 bg-white/[0.02] backdrop-blur-2xl border-r border-white/10 flex flex-col z-20 shadow-2xl hidden transition-all duration-500">
+        <div class="p-6 border-b border-white/10 flex justify-between items-center">
+            <h1 class="text-xl font-bold text-white flex items-center gap-3"><div class="p-1.5 bg-brand-500/20 border border-brand-500/30 rounded-md"><i data-lucide="shield" class="text-brand-500 w-5 h-5"></i></div>Luau-Auth</h1>
             <div id="bell-icon-container" class="relative cursor-pointer hover:scale-110 hidden" onclick="showToast('Your API Key is expiring soon!', 'error')">
                 <i data-lucide="bell" class="w-5 h-5 text-zinc-400 hover:text-white"></i>
-                <span class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-surface-900"></span>
+                <span class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-[#05050a]"></span>
             </div>
         </div>
         
-        <div id="user-profile-area" class="p-4 border-b border-zinc-800/50"></div>
+        <div id="user-profile-area" class="p-4 border-b border-white/10 bg-white/[0.01]"></div>
 
         <nav id="sidebar-nav" class="flex-1 p-4 space-y-1">
             <button onclick="setTab('dashboard')" id="tab-dashboard" class="w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium"><i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard</button>
@@ -61,14 +67,14 @@
             <button onclick="setTab('settings')" id="tab-settings" class="w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium"><i data-lucide="settings" class="w-5 h-5"></i> Settings</button>
         </nav>
         
-        <div id="logout-container" class="p-4 border-t border-zinc-800/50 hidden">
+        <div id="logout-container" class="p-4 border-t border-white/10 hidden bg-white/[0.01]">
             <button onclick="openLogoutModal()" class="w-full flex items-center gap-3 px-4 py-3 rounded-md text-zinc-400 hover:bg-red-500/10 hover:text-red-400 text-sm font-medium">
                 <i data-lucide="log-out" class="w-5 h-5"></i> Logout
             </button>
         </div>
     </aside>
 
-    <main class="flex-1 overflow-y-auto relative bg-[#030303] flex flex-col transition-all duration-500 w-full min-w-0">
+    <main class="flex-1 overflow-y-auto relative z-10 flex flex-col transition-all duration-500 w-full min-w-0">
         <div id="main-content" class="p-4 sm:p-8 max-w-6xl mx-auto flex-1 w-full overflow-x-hidden">
             <div class="flex items-center justify-center h-full">
                 <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-brand-500"></i>
@@ -76,8 +82,8 @@
         </div>
     </main>
 
-    <div id="modal-container"></div>
-    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+    <div id="modal-container" class="z-50 relative"></div>
+    <div id="toast-container" class="fixed bottom-6 right-6 z- flex flex-col gap-2 pointer-events-none"></div>
 
     <script>
         const state = {
@@ -92,8 +98,8 @@
         function showToast(message, type = 'success') {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            toast.className = `toast-enter pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border border-zinc-800 bg-[#111113] shadow-2xl text-sm font-semibold text-white`;
-            toast.innerHTML = `<i data-lucide="${type === 'error' ? 'alert-circle' : 'check-circle'}" class="w-[18px] h-[18px] fill-white text-[#111113]"></i><span>${message}</span>`;
+            toast.className = `toast-enter pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border border-white/10 backdrop-blur-xl bg-black/60 shadow-[0_8px_32px_0_rgba(0,0,0,0.36)] text-sm font-semibold text-white`;
+            toast.innerHTML = `<i data-lucide="${type === 'error' ? 'alert-circle' : 'check-circle'}" class="w-[18px] h-[18px] fill-white text-black"></i><span>${message}</span>`;
             container.appendChild(toast);
             lucide.createIcons();
             setTimeout(() => { toast.classList.remove('toast-enter'); toast.classList.add('toast-leave'); setTimeout(() => toast.remove(), 300); }, 3000);
@@ -140,7 +146,7 @@
                         ${avatarHtml}
                         <div class="overflow-hidden">
                             <p class="text-sm font-semibold text-white truncate">${state.user.username}</p>
-                            <p class="text-[10px] uppercase tracking-widest text-zinc-500 font-bold flex items-center gap-1">
+                            <p class="text-[10px] uppercase tracking-widest text-zinc-400 font-bold flex items-center gap-1">
                                 ${state.user.isAdmin ? '<i data-lucide="crown" class="w-3 h-3 text-yellow-500"></i> ADMIN' : 'MEMBER'}
                             </p>
                         </div>
@@ -164,11 +170,11 @@
         function renderLoginPanel() {
             document.getElementById('main-content').innerHTML = `
                 <div class="flex items-center justify-center h-full">
-                    <div class="bg-surface-800 border border-zinc-800/80 rounded-2xl p-10 max-w-md w-full text-center shadow-2xl modal-animate ring-1 ring-white/5">
-                        <div class="w-16 h-16 bg-brand-500/10 text-brand-400 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-brand-500/20"><i data-lucide="shield" class="w-8 h-8"></i></div>
+                    <div class="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-3xl p-10 max-w-md w-full text-center shadow-[0_8px_32px_0_rgba(0,0,0,0.36)] modal-animate">
+                        <div class="w-16 h-16 bg-brand-500/20 text-brand-400 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-brand-500/30"><i data-lucide="shield" class="w-8 h-8"></i></div>
                         <h2 class="text-3xl font-bold text-white mb-2 tracking-tight">Luau-Auth</h2>
                         <p class="text-zinc-400 text-sm mb-8">Authenticate with Discord to access the dashboard.</p>
-                        <a href="/api/auth/discord" class="w-full flex items-center justify-center gap-2 bg-[#5865F2] hover:bg-[#4752C4] text-white py-3 rounded-xl text-sm font-medium shadow-lg shadow-[#5865F2]/20 border border-[#5865F2]/50 hover:border-[#5865F2]">
+                        <a href="/api/auth/discord" class="w-full flex items-center justify-center gap-2 bg-[#5865F2]/90 backdrop-blur-md hover:bg-[#4752C4] text-white py-3 rounded-xl text-sm font-medium shadow-lg shadow-[#5865F2]/20 border border-white/10 transition-all hover:-translate-y-1">
                             <i data-lucide="log-in" class="w-5 h-5"></i> Login with Discord
                         </a>
                     </div>
@@ -213,19 +219,12 @@
         }
 
         async function loadFromServer() {
-            const dataKey = 'luau_data_' + state.user.id;
-            const localData = localStorage.getItem(dataKey);
-            if (localData) state.projects = JSON.parse(localData);
-
             try {
                 const res = await fetch(`/api/sync?discordId=${state.user.id}`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.projects && data.projects.length > 0) {
+                    if (data.projects) {
                         state.projects = data.projects;
-                        localStorage.setItem(dataKey, JSON.stringify(state.projects));
-                    } else if (state.projects.length > 0) {
-                        await syncToServer();
                     }
                 }
             } catch (err) {} 
@@ -233,8 +232,6 @@
         }
 
         async function syncToServer() {
-            const dataKey = 'luau_data_' + state.user.id;
-            localStorage.setItem(dataKey, JSON.stringify(state.projects));
             try {
                 const res = await fetch('/api/sync', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -247,14 +244,14 @@
 
         function openLogoutModal() {
             document.getElementById('modal-container').innerHTML = `
-            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-sm shadow-2xl modal-animate ring-1 ring-white/5 text-center">
-                    <div class="w-16 h-16 bg-red-500/10 text-red-400 rounded-full flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-transform"><i data-lucide="log-out" class="w-8 h-8"></i></div>
+            <div class="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                <div class="bg-[#0a0a0f]/80 backdrop-blur-2xl border border-white/10 p-6 rounded-3xl w-full max-w-sm shadow-2xl modal-animate text-center">
+                    <div class="w-16 h-16 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-transform"><i data-lucide="log-out" class="w-8 h-8"></i></div>
                     <h3 class="text-xl font-bold text-white mb-2">Sign Out</h3>
                     <p class="text-sm text-zinc-400 mb-6">Are you sure you want to sign out or switch accounts?</p>
                     <div class="flex gap-3">
-                        <button onclick="closeModal()" class="flex-1 px-4 py-2.5 bg-surface-700 hover:bg-surface-600 text-white rounded-lg text-sm font-medium">Cancel</button>
-                        <button onclick="confirmLogout()" class="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium">Sign Out</button>
+                        <button onclick="closeModal()" class="flex-1 px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-sm font-medium backdrop-blur-md">Cancel</button>
+                        <button onclick="confirmLogout()" class="flex-1 px-4 py-2.5 bg-red-500/80 hover:bg-red-500 text-white rounded-xl text-sm font-medium border border-red-500/50 backdrop-blur-md">Sign Out</button>
                     </div>
                 </div>
             </div>`;
@@ -266,17 +263,21 @@
             window.location.reload();
         }
 
-        function setTab(tab) { state.activeTab = tab; renderApp(); }
+        async function setTab(tab) { 
+            state.activeTab = tab; 
+            if (tab === 'keys' || tab === 'dashboard') await loadFromServer();
+            else renderApp();
+        }
 
         function renderApp() {
             if (!state.user) return;
 
             ['dashboard', 'projects', 'keys', 'settings'].forEach(t => {
                 const el = document.getElementById(`tab-${t}`);
-                if (el) el.className = `w-full flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium ${state.activeTab === t ? 'bg-[#15172b] text-[#515dfa]' : 'text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
+                if (el) el.className = `w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium ${state.activeTab === t ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30 shadow-[0_0_15px_rgba(79,70,229,0.15)]' : 'text-zinc-400 hover:bg-white/5 hover:text-white border border-transparent'}`;
             });
             const regTab = document.getElementById('tab-register');
-            if (regTab) regTab.className = `w-full items-center gap-3 px-4 py-3 rounded-md text-sm font-medium ${state.activeTab === 'register' ? 'bg-[#15172b] text-[#515dfa]' : 'text-zinc-400 hover:bg-surface-800 hover:text-white'} ${state.user.isAdmin ? 'flex' : 'hidden'}`;
+            if (regTab) regTab.className = `w-full items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium ${state.activeTab === 'register' ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30 shadow-[0_0_15px_rgba(79,70,229,0.15)]' : 'text-zinc-400 hover:bg-white/5 hover:text-white border border-transparent'} ${state.user.isAdmin ? 'flex' : 'hidden'}`;
 
             const main = document.getElementById('main-content');
             
@@ -297,8 +298,8 @@
         function renderProjects(mainContainer) {
             mainContainer.innerHTML = `
                 <div class="flex justify-between items-center mb-8 modal-animate">
-                    <div><h2 class="text-3xl font-bold text-white tracking-tight">Projects</h2><p class="text-zinc-500 text-sm mt-1">Manage your script hubs and loaders.</p></div>
-                    <button onclick="openCreateProjectModal()" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium shadow-[0_0_15px_rgba(79,70,229,0.3)]"><i data-lucide="plus" class="w-5 h-5"></i> Create Project</button>
+                    <div><h2 class="text-3xl font-bold text-white tracking-tight">Projects</h2><p class="text-zinc-400 text-sm mt-1">Manage your script hubs and loaders.</p></div>
+                    <button onclick="openCreateProjectModal()" class="bg-brand-600/80 hover:bg-brand-500 backdrop-blur-md border border-brand-500/50 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-medium shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:-translate-y-1"><i data-lucide="plus" class="w-5 h-5"></i> Create Project</button>
                 </div>
                 <div class="space-y-4 modal-animate">${renderProjectsList()}</div>
             `;
@@ -318,21 +319,21 @@
 
             mainContainer.innerHTML = `
                 <div class="flex justify-between items-center mb-8 modal-animate">
-                    <div><h2 class="text-3xl font-bold text-white tracking-tight">Dashboard Overview</h2><p class="text-zinc-500 text-sm mt-1">Track analytics and real-time script executions.</p></div>
+                    <div><h2 class="text-3xl font-bold text-white tracking-tight">Dashboard Overview</h2><p class="text-zinc-400 text-sm mt-1">Track analytics and real-time script executions.</p></div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 modal-animate">
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 flex items-center gap-4 hover:border-brand-500/30 hover:scale-[1.02]">
-                        <div class="w-12 h-12 bg-brand-500/10 rounded-xl flex items-center justify-center border border-brand-500/20 text-brand-400"><i data-lucide="activity" class="w-6 h-6"></i></div>
+                    <div class="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-2xl p-6 flex items-center gap-4 hover:bg-white/[0.05] hover:border-brand-500/30 hover:-translate-y-1 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)]">
+                        <div class="w-12 h-12 bg-brand-500/20 rounded-xl flex items-center justify-center border border-brand-500/30 text-brand-400"><i data-lucide="activity" class="w-6 h-6"></i></div>
                         <div><p class="text-zinc-400 text-sm font-medium">Total Executions</p><p class="text-2xl font-bold text-white">${totalExecutions.toLocaleString()}</p></div>
                     </div>
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 flex items-center gap-4 hover:border-emerald-500/30 hover:scale-[1.02]">
-                        <div class="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center border border-emerald-500/20 text-emerald-400"><i data-lucide="flame" class="w-6 h-6"></i></div>
+                    <div class="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-2xl p-6 flex items-center gap-4 hover:bg-white/[0.05] hover:border-emerald-500/30 hover:-translate-y-1 shadow-[0_8px_32px_0_rgba(0,0,0,0.2)]">
+                        <div class="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center border border-emerald-500/30 text-emerald-400"><i data-lucide="flame" class="w-6 h-6"></i></div>
                         <div><p class="text-zinc-400 text-sm font-medium">Most Executed Script</p><p class="text-xl font-bold text-white truncate max-w-[200px]">${topScript.name} <span class="text-sm font-medium text-emerald-500 ml-2">${topScript.execs > 0 ? `(${topScript.execs})` : ''}</span></p></div>
                     </div>
                 </div>
 
-                <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 modal-animate hover:border-brand-500/30 w-full overflow-hidden">
+                <div class="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-2xl p-6 modal-animate hover:bg-white/[0.05] shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] w-full overflow-hidden">
                     <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-4 h-4 text-brand-400"></i> Execution History</h3>
                     <div class="h-[400px] w-full relative">
                         <canvas id="executionChart"></canvas>
@@ -386,8 +387,8 @@
             datasets.push({
                 label: 'Total Executions',
                 data: labels.map(d => totalHistory[d] || 0),
-                borderColor: '#ffffff',
-                backgroundColor: '#ffffff',
+                borderColor: 'rgba(255, 255, 255, 0.8)',
+                backgroundColor: 'rgba(255, 255, 255, 0.8)',
                 borderDash: Array.of(5, 5),
                 borderWidth: 3,
                 tension: 0.4,
@@ -403,12 +404,12 @@
                     animation: { duration: 2000, easing: 'easeOutQuart' },
                     interaction: { mode: 'index', intersect: false },
                     scales: {
-                        y: { beginAtZero: true, grid: { color: '#27272a' }, ticks: { color: '#a1a1aa' } },
-                        x: { grid: { display: false }, ticks: { color: '#a1a1aa' } }
+                        y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } },
+                        x: { grid: { display: false }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } }
                     },
                     plugins: {
-                        legend: { position: 'bottom', labels: { color: '#e4e4e7', usePointStyle: true, boxWidth: 8, padding: 20 } },
-                        tooltip: { backgroundColor: '#111113', titleColor: '#fff', bodyColor: '#a1a1aa', borderColor: '#27272a', borderWidth: 1 }
+                        legend: { position: 'bottom', labels: { color: 'rgba(255, 255, 255, 0.8)', usePointStyle: true, boxWidth: 8, padding: 20 } },
+                        tooltip: { backgroundColor: 'rgba(0, 0, 0, 0.8)', titleColor: '#fff', bodyColor: '#ccc', borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, backdropFilter: 'blur(10px)' }
                     }
                 }
             });
@@ -420,36 +421,36 @@
             mainContainer.innerHTML = `
                 <div class="max-w-6xl mx-auto modal-animate w-full overflow-hidden">
                     <div class="flex justify-between items-center mb-8">
-                        <div><h2 class="text-3xl font-bold text-white tracking-tight">HWID Keys</h2><p class="text-zinc-500 text-sm mt-1">Generate and manage access keys for your locked projects.</p></div>
+                        <div><h2 class="text-3xl font-bold text-white tracking-tight">HWID Keys</h2><p class="text-zinc-400 text-sm mt-1">Generate and manage access keys for your locked projects.</p></div>
                     </div>
                     
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-4 sm:p-6 mb-8 hover:border-zinc-700 w-full">
+                    <div class="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-3xl p-4 sm:p-6 mb-8 hover:bg-white/[0.05] shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] w-full">
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                             <div>
                                 <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Select Project</label>
-                                <select id="hwid-proj-select" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none" onchange="renderHWIDTable()">
+                                <select id="hwid-proj-select" class="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-brand-500 outline-none backdrop-blur-md" onchange="renderHWIDTable()">
                                     ${projectOptions || '<option disabled selected>No projects created</option>'}
                                 </select>
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">User Note / Discord ID</label>
-                                <input type="text" id="hwid-note" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none" placeholder="e.g. buyer_discord">
+                                <input type="text" id="hwid-note" class="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-brand-500 outline-none backdrop-blur-md" placeholder="e.g. buyer_discord">
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Days</label>
-                                <input type="number" id="hwid-days" value="30" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none">
+                                <input type="number" id="hwid-days" value="30" class="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-brand-500 outline-none backdrop-blur-md">
                             </div>
-                            <button onclick="generateProjectHWIDKey()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-3 rounded-lg text-sm font-medium shadow-lg w-full h-[50px] transition-transform" ${state.projects.length === 0 ? 'disabled' : ''}>Create Key</button>
+                            <button onclick="generateProjectHWIDKey()" class="bg-brand-600/80 hover:bg-brand-500 border border-brand-500/50 backdrop-blur-md text-white px-6 py-3 rounded-xl text-sm font-medium shadow-[0_0_20px_rgba(79,70,229,0.3)] w-full h-[50px] hover:-translate-y-1" ${state.projects.length === 0 ? 'disabled' : ''}>Create Key</button>
                         </div>
                     </div>
 
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl hover:border-zinc-700 w-full overflow-hidden">
+                    <div class="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-3xl hover:bg-white/[0.05] shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] w-full overflow-hidden">
                         <div class="overflow-x-auto w-full max-w-full">
                             <table class="w-full text-left text-sm whitespace-nowrap">
-                                <thead class="bg-surface-900/50 border-b border-zinc-800 text-zinc-400">
-                                    <tr><th class="p-4 font-medium">Script Key</th><th class="p-4 font-medium">Note</th><th class="p-4 font-medium">HWID Status</th><th class="p-4 font-medium">Expires</th><th class="p-4 font-medium text-right">Actions</th></tr>
+                                <thead class="bg-black/20 border-b border-white/10 text-zinc-400">
+                                    <tr><th class="p-5 font-medium">Script Key</th><th class="p-5 font-medium">Note</th><th class="p-5 font-medium">HWID Status</th><th class="p-5 font-medium">Expires</th><th class="p-5 font-medium text-right">Actions</th></tr>
                                 </thead>
-                                <tbody id="hwid-table-body" class="divide-y divide-zinc-800/50">
+                                <tbody id="hwid-table-body" class="divide-y divide-white/5">
                                 </tbody>
                             </table>
                         </div>
@@ -472,18 +473,18 @@
 
             tbody.innerHTML = project.hwidKeys.map(k => {
                 const daysLeft = Math.max(0, Math.ceil((k.expiresAt - Date.now()) / (1000 * 60 * 60 * 24)));
-                const hwidStatus = k.hwid ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">LOCKED</span>` : `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-500/10 text-zinc-400 border border-zinc-500/20">UNUSED</span>`;
+                const hwidStatus = k.hwid ? `<span class="px-2.5 py-1 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]">LOCKED</span>` : `<span class="px-2.5 py-1 rounded-md text-[10px] font-bold bg-white/10 text-zinc-300 border border-white/20">UNUSED</span>`;
                 const expiredStyle = daysLeft === 0 ? "text-red-400 font-bold" : "text-emerald-400 font-medium";
                 
                 return `
-                <tr class="hover:bg-surface-700/30">
-                    <td class="p-4"><div class="flex items-center gap-2"><code class="font-mono text-zinc-300 bg-[#0a0a0c] px-2 py-1 rounded border border-zinc-700 text-xs">${k.key}</code><button onclick="copyToClipboard('${k.key}', 'HWID Key Copied!')" class="text-zinc-500 hover:text-white"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button></div></td>
-                    <td class="p-4 text-white">${k.note || '-'}</td>
-                    <td class="p-4">${hwidStatus}</td>
-                    <td class="p-4 ${expiredStyle}">${daysLeft} Days</td>
-                    <td class="p-4 flex justify-end gap-2">
-                        <button onclick="resetHWID('${projId}', '${k.key}')" class="px-3 py-1.5 bg-surface-700 hover:bg-surface-600 text-white rounded-md text-xs border border-zinc-700/50">Reset HWID</button>
-                        <button onclick="deleteHWIDKey('${projId}', '${k.key}')" class="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-md text-xs border border-red-500/20">Delete</button>
+                <tr class="hover:bg-white/[0.02] transition-colors">
+                    <td class="p-5"><div class="flex items-center gap-3"><code class="font-mono text-zinc-200 bg-black/40 px-3 py-1.5 rounded-md border border-white/10 text-xs shadow-inner">${k.key}</code><button onclick="copyToClipboard('${k.key}', 'HWID Key Copied!')" class="text-zinc-500 hover:text-white"><i data-lucide="copy" class="w-4 h-4"></i></button></div></td>
+                    <td class="p-5 text-white">${k.note || '-'}</td>
+                    <td class="p-5">${hwidStatus}</td>
+                    <td class="p-5 ${expiredStyle}">${daysLeft} Days</td>
+                    <td class="p-5 flex justify-end gap-2">
+                        <button onclick="resetHWID('${projId}', '${k.key}')" class="px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs border border-white/10 backdrop-blur-md">Reset</button>
+                        <button onclick="deleteHWIDKey('${projId}', '${k.key}')" class="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-xs border border-red-500/30 backdrop-blur-md">Delete</button>
                     </td>
                 </tr>`;
             }).join('');
@@ -554,25 +555,25 @@
             mainContainer.innerHTML = `
                 <div class="max-w-6xl mx-auto modal-animate w-full overflow-hidden">
                     <div class="flex justify-between items-center mb-8">
-                        <div><h2 class="text-3xl font-bold text-white tracking-tight">Key Management</h2><p class="text-zinc-500 text-sm mt-1">Admin control over user access keys.</p></div>
-                        <div class="flex gap-2">
-                            <input type="number" id="input-admin-days" value="30" class="w-24 bg-[#0a0a0c] border border-zinc-700 rounded-lg p-2.5 text-white focus:border-brand-500 outline-none text-sm" placeholder="Days">
-                            <button onclick="generateApiKey()" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg min-w-[140px] flex items-center justify-center transition-transform">Generate Key</button>
+                        <div><h2 class="text-3xl font-bold text-white tracking-tight">Key Management</h2><p class="text-zinc-400 text-sm mt-1">Admin control over user access keys.</p></div>
+                        <div class="flex gap-3">
+                            <input type="number" id="input-admin-days" value="30" class="w-24 bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-brand-500 outline-none text-sm backdrop-blur-md" placeholder="Days">
+                            <button onclick="generateApiKey()" class="bg-brand-600/80 hover:bg-brand-500 border border-brand-500/50 backdrop-blur-md text-white px-5 py-3 rounded-xl text-sm font-medium shadow-[0_0_20px_rgba(79,70,229,0.3)] min-w-[140px] flex items-center justify-center hover:-translate-y-1">Generate Key</button>
                         </div>
                     </div>
                     
-                    <div id="admin-key-result" class="hidden mb-6 p-4 bg-brand-500/10 border border-brand-500/20 rounded-xl flex items-center justify-between hover:scale-[1.01]">
-                        <div><p class="text-xs text-brand-400 font-bold uppercase mb-1">New Key Generated</p><code id="admin-new-key" class="text-white font-mono text-lg"></code></div>
-                        <button onclick="copyToClipboard(document.getElementById('admin-new-key').innerText, 'Key Copied!')" class="bg-surface-800 hover:bg-surface-700 text-white px-4 py-2 rounded-lg text-sm font-medium border border-zinc-700/50">Copy</button>
+                    <div id="admin-key-result" class="hidden mb-6 p-5 bg-brand-500/20 border border-brand-500/30 rounded-2xl flex items-center justify-between hover:-translate-y-1 backdrop-blur-xl shadow-[0_8px_32px_0_rgba(0,0,0,0.2)]">
+                        <div><p class="text-xs text-brand-300 font-bold uppercase mb-1">New Key Generated</p><code id="admin-new-key" class="text-white font-mono text-lg bg-black/40 px-3 py-1 rounded-md border border-white/10 shadow-inner"></code></div>
+                        <button onclick="copyToClipboard(document.getElementById('admin-new-key').innerText, 'Key Copied!')" class="bg-white/5 hover:bg-white/10 text-white px-5 py-2.5 rounded-xl text-sm font-medium border border-white/10 backdrop-blur-md">Copy</button>
                     </div>
 
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl hover:border-zinc-700 w-full overflow-hidden">
+                    <div class="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-3xl hover:bg-white/[0.05] shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] w-full overflow-hidden">
                         <div class="overflow-x-auto w-full max-w-full">
-                            <table class="w-full text-left text-sm whitespace-nowrap">
-                                <thead class="bg-surface-900/50 border-b border-zinc-800 text-zinc-400">
-                                    <tr><th class="p-4 font-medium">API Key</th><th class="p-4 font-medium">Claimed By</th><th class="p-4 font-medium">Expires In</th><th class="p-4 font-medium text-right">Actions</th></tr>
+                            <table class="w-full text-left text-sm whitespace-nowrap min-w-max">
+                                <thead class="bg-black/20 border-b border-white/10 text-zinc-400">
+                                    <tr><th class="p-5 font-medium">API Key</th><th class="p-5 font-medium">Claimed By</th><th class="p-5 font-medium">Expires In</th><th class="p-5 font-medium text-right">Actions</th></tr>
                                 </thead>
-                                <tbody id="keys-table-body" class="divide-y divide-zinc-800/50">
+                                <tbody id="keys-table-body" class="divide-y divide-white/5">
                                     <tr><td colspan="4" class="p-8 text-center text-zinc-500">Loading keys...</td></tr>
                                 </tbody>
                             </table>
@@ -595,17 +596,17 @@
 
             tbody.innerHTML = keys.map(([keyStr, data]) => {
                 const daysLeft = Math.max(0, Math.ceil((data.expiresAt - Date.now()) / (1000 * 60 * 60 * 24)));
-                const userDisplay = data.userId ? `<div class="flex items-center gap-2"><div class="w-6 h-6 rounded bg-brand-500/20 flex items-center justify-center text-[10px] text-brand-400 uppercase border border-brand-500/30">${data.username.charAt(0)}</div><div><p class="text-white font-medium">${data.username}</p><p class="text-[10px] text-zinc-500">${data.userId}</p></div></div>` : `<span class="text-zinc-500 italic">Unclaimed</span>`;
+                const userDisplay = data.userId ? `<div class="flex items-center gap-3"><div class="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center text-[10px] text-brand-400 uppercase border border-brand-500/30">${data.username.charAt(0)}</div><div><p class="text-white font-medium">${data.username}</p><p class="text-[10px] text-zinc-400">${data.userId}</p></div></div>` : `<span class="text-zinc-500 italic">Unclaimed</span>`;
                 const expiredStyle = daysLeft === 0 ? "text-red-400 font-bold" : "text-emerald-400 font-medium";
                 
                 return `
-                <tr class="hover:bg-surface-700/30">
-                    <td class="p-4 font-mono text-zinc-300 text-xs">${keyStr}</td>
-                    <td class="p-4">${userDisplay}</td>
-                    <td class="p-4 ${expiredStyle}">${daysLeft} Days</td>
-                    <td class="p-4 flex justify-end gap-2">
-                        <button onclick="extendKey('${keyStr}')" class="px-3 py-1.5 bg-surface-700 hover:bg-surface-600 text-white rounded-md text-xs border border-zinc-700/50">Extend</button>
-                        <button onclick="revokeKey('${keyStr}')" class="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-md text-xs border border-red-500/20">Revoke</button>
+                <tr class="hover:bg-white/[0.02] transition-colors">
+                    <td class="p-5 font-mono text-zinc-200 text-xs bg-black/20 rounded-md border border-white/5 inline-block mt-3 ml-3">${keyStr}</td>
+                    <td class="p-5">${userDisplay}</td>
+                    <td class="p-5 ${expiredStyle}">${daysLeft} Days</td>
+                    <td class="p-5 flex justify-end gap-2">
+                        <button onclick="extendKey('${keyStr}')" class="px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs border border-white/10 backdrop-blur-md">Extend</button>
+                        <button onclick="revokeKey('${keyStr}')" class="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-xs border border-red-500/30 backdrop-blur-md">Revoke</button>
                     </td>
                 </tr>`;
             }).join('');
@@ -658,22 +659,22 @@
                 <div class="max-w-2xl modal-animate w-full">
                     <h2 class="text-3xl font-bold text-white tracking-tight mb-8">Settings</h2>
                     
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 w-full">
-                        <h3 class="text-lg font-bold text-white flex items-center gap-2 mb-4"><i data-lucide="key" class="w-5 h-5"></i> Access Configuration</h3>
+                    <div class="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-3xl p-8 hover:bg-white/[0.05] shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] w-full">
+                        <h3 class="text-lg font-bold text-white flex items-center gap-2 mb-6"><i data-lucide="key" class="w-5 h-5 text-brand-400"></i> Access Configuration</h3>
                         <div>
-                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Your API Key ${state.user.isAdmin ? '(Not needed for Admins)' : ''}</label>
+                            <label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Your API Key ${state.user.isAdmin ? '(Not needed for Admins)' : ''}</label>
                             <div class="flex gap-3 flex-wrap sm:flex-nowrap">
-                                <input type="password" id="input-user-apikey" value="${state.apiKey}" class="flex-1 min-w-[200px] w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono placeholder:text-zinc-700" placeholder="xxxxxxxxxxxx" ${state.user.isAdmin ? 'disabled' : ''}>
-                                <button onclick="saveApiKey()" class="bg-surface-700 hover:bg-surface-600 text-white px-6 py-3 sm:py-2.5 rounded-lg text-sm font-medium border border-zinc-700/50 w-full sm:w-auto" ${state.user.isAdmin ? 'hidden' : ''}>Save & Link Key</button>
+                                <input type="password" id="input-user-apikey" value="${state.apiKey}" class="flex-1 min-w-[200px] w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-brand-500 outline-none font-mono placeholder:text-zinc-600 backdrop-blur-md shadow-inner" placeholder="xxxxxxxxxxxx" ${state.user.isAdmin ? 'disabled' : ''}>
+                                <button onclick="saveApiKey()" class="bg-brand-600/80 hover:bg-brand-500 border border-brand-500/50 backdrop-blur-md text-white px-8 py-4 sm:py-0 rounded-xl text-sm font-medium shadow-[0_0_20px_rgba(79,70,229,0.3)] w-full sm:w-auto hover:-translate-y-1" ${state.user.isAdmin ? 'hidden' : ''}>Save & Link</button>
                             </div>
-                            <p class="text-xs text-zinc-500 mt-2">API Keys are required to upload or edit scripts. Contact an Admin if you need a key.</p>
+                            <p class="text-xs text-zinc-500 mt-3">API Keys are required to upload or edit scripts. Contact an Admin if you need a key.</p>
                         </div>
                     </div>
 
-                    <div class="mt-8 pt-8 border-t border-zinc-800/50">
-                        <h3 class="text-lg font-bold text-red-400 flex items-center gap-2 mb-4"><i data-lucide="log-out" class="w-5 h-5"></i> Account Actions</h3>
-                        <button onclick="openLogoutModal()" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-6 py-2.5 rounded-lg text-sm font-medium border border-red-500/20 flex items-center gap-2 hover:scale-105">
-                            Sign Out / Switch Account
+                    <div class="mt-8 pt-8 border-t border-white/10">
+                        <h3 class="text-lg font-bold text-red-400 flex items-center gap-2 mb-4"><i data-lucide="shield-alert" class="w-5 h-5"></i> Account Actions</h3>
+                        <button onclick="openLogoutModal()" class="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-6 py-3 rounded-xl text-sm font-medium border border-red-500/30 flex items-center gap-2 hover:-translate-y-1 backdrop-blur-md shadow-lg">
+                            <i data-lucide="log-out" class="w-4 h-4"></i> Sign Out / Switch Account
                         </button>
                     </div>
                 </div>
@@ -687,60 +688,60 @@
         }
 
         function renderProjectsList() {
-            if (state.projects.length === 0) return `<div class="text-center py-24 border-2 border-dashed border-zinc-800/60 rounded-2xl bg-surface-800/30 w-full"><h3 class="text-lg font-medium text-white">No projects yet</h3></div>`;
+            if (state.projects.length === 0) return `<div class="text-center py-24 border-2 border-dashed border-white/10 rounded-3xl bg-white/[0.02] backdrop-blur-xl w-full"><h3 class="text-lg font-medium text-zinc-400">No projects yet</h3></div>`;
 
             return state.projects.map(p => `
-                <div class="bg-surface-800 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-700 ${p.expanded ? 'shadow-xl shadow-black/50 ring-1 ring-brand-500/20' : ''} w-full block">
-                    <div class="flex items-center justify-between p-5 cursor-pointer bg-surface-800 hover:bg-surface-700/50 transition-colors" onclick="toggleProject('${p.id}')">
-                        <div class="flex items-center gap-4">
-                            <div class="w-10 h-10 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center transition-transform ${p.expanded ? 'scale-110' : ''}"><i data-lucide="box" class="text-brand-400 w-5 h-5"></i></div>
+                <div class="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-3xl overflow-hidden hover:bg-white/[0.05] shadow-[0_8px_32px_0_rgba(0,0,0,0.2)] ${p.expanded ? 'ring-1 ring-brand-500/30' : ''} w-full block transition-all duration-300">
+                    <div class="flex items-center justify-between p-6 cursor-pointer hover:bg-white/[0.02] transition-colors" onclick="toggleProject('${p.id}')">
+                        <div class="flex items-center gap-5">
+                            <div class="w-12 h-12 rounded-xl bg-brand-500/20 border border-brand-500/30 flex items-center justify-center transition-transform duration-500 ${p.expanded ? 'scale-110 rotate-3' : ''}"><i data-lucide="box" class="text-brand-400 w-6 h-6"></i></div>
                             <div>
-                                <h3 class="text-lg font-semibold text-white">${p.name}</h3>
-                                <p class="text-[11px] text-zinc-500 font-mono">ID: ${p.id.substring(0, 16)}...</p>
+                                <h3 class="text-xl font-bold text-white">${p.name}</h3>
+                                <p class="text-xs text-zinc-500 font-mono mt-0.5">ID: ${p.id.substring(0, 16)}...</p>
                             </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <button onclick="event.stopPropagation(); openProjectSettings('${p.id}')" class="p-2 text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg" title="Settings"><i data-lucide="settings" class="w-5 h-5"></i></button>
-                            <div class="w-px h-6 bg-zinc-800 mx-2"></div>
-                            <i data-lucide="${p.expanded ? 'chevron-up' : 'chevron-down'}" class="text-zinc-500 w-5 h-5 transition-transform"></i>
+                        <div class="flex items-center gap-3">
+                            <button onclick="event.stopPropagation(); openProjectSettings('${p.id}')" class="p-2.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors backdrop-blur-md" title="Settings"><i data-lucide="settings" class="w-5 h-5"></i></button>
+                            <div class="w-px h-8 bg-white/10 mx-1"></div>
+                            <i data-lucide="${p.expanded ? 'chevron-up' : 'chevron-down'}" class="text-zinc-500 w-5 h-5 transition-transform duration-300"></i>
                         </div>
                     </div>
                     ${p.expanded ? `
-                    <div class="p-4 sm:p-5 border-t border-zinc-800/80 bg-[#0a0a0c] modal-animate w-full overflow-x-auto">
-                        <div class="flex gap-3 mb-5 flex-wrap sm:flex-nowrap">
-                            <button onclick="openAddScriptModal('${p.id}')" class="bg-surface-700 hover:bg-surface-600 text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-medium border border-zinc-700/50 w-full sm:w-auto"><i data-lucide="file-plus-2" class="w-4 h-4 text-brand-400"></i> ADD SCRIPT</button>
-                            <button onclick="openCustomLoaderModal('${p.id}')" class="bg-surface-700 hover:bg-surface-600 text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-medium border border-zinc-700/50 w-full sm:w-auto"><i data-lucide="code-2" class="w-4 h-4 text-zinc-400"></i> CUSTOM LOADER</button>
+                    <div class="p-6 border-t border-white/5 bg-black/20 modal-animate w-full overflow-x-auto">
+                        <div class="flex gap-4 mb-6 flex-wrap sm:flex-nowrap">
+                            <button onclick="openAddScriptModal('${p.id}')" class="bg-white/5 hover:bg-white/10 backdrop-blur-md text-white px-5 py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-medium border border-white/10 w-full sm:w-auto hover:-translate-y-1 shadow-lg"><i data-lucide="file-plus-2" class="w-4 h-4 text-brand-400"></i> ADD SCRIPT</button>
+                            <button onclick="openCustomLoaderModal('${p.id}')" class="bg-white/5 hover:bg-white/10 backdrop-blur-md text-white px-5 py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-medium border border-white/10 w-full sm:w-auto hover:-translate-y-1 shadow-lg"><i data-lucide="code-2" class="w-4 h-4 text-zinc-400"></i> CUSTOM LOADER</button>
                         </div>
-                        <div class="space-y-2 w-full min-w-[500px]">${renderScripts(p.scripts, p.id)}</div>
+                        <div class="space-y-3 w-full min-w-[600px]">${renderScripts(p.scripts, p.id)}</div>
                     </div>` : ''}
                 </div>
             `).join('');
         }
 
         function renderScripts(scripts, projectId) {
-            if (scripts.length === 0) return `<div class="text-sm text-zinc-500 text-center py-6 bg-surface-900/50 rounded-lg border border-zinc-800/30 w-full">No scripts added</div>`;
+            if (scripts.length === 0) return `<div class="text-sm text-zinc-500 text-center py-8 bg-black/40 rounded-2xl border border-white/5 w-full">No scripts added</div>`;
             return scripts.map(s => `
-                <div class="group flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-[#121215] border border-zinc-800/80 rounded-lg hover:border-brand-500/30 hover:translate-x-1 w-full block">
-                    <div class="flex items-center gap-4 mb-3 sm:mb-0">
-                        <button onclick="toggleScriptStatusDirect('${projectId}', '${s.id}')" class="relative inline-flex h-[22px] w-[42px] flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] ${s.status === 'Active' ? 'border-[#272a54] bg-[#0a0a0c]' : 'border-zinc-800 bg-[#0a0a0c]'}" title="Toggle Active">
-                            <span class="pointer-events-none absolute left-[2px] inline-block h-[15px] w-[15px] transform rounded-full transition-all duration-300 ease-in-out ${s.status === 'Active' ? 'translate-x-[19px] bg-[#515dfa]' : 'translate-x-0 bg-zinc-600'}"></span>
+                <div class="group flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-2xl hover:bg-white/[0.04] hover:border-brand-500/30 transition-all duration-300 hover:translate-x-1 shadow-md w-full block">
+                    <div class="flex items-center gap-5 mb-4 sm:mb-0">
+                        <button onclick="toggleScriptStatusDirect('${projectId}', '${s.id}')" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] ${s.status === 'Active' ? 'border-[#272a54] bg-black/60' : 'border-white/10 bg-black/60'} shadow-inner" title="Toggle Active">
+                            <span class="pointer-events-none absolute left-[2px] inline-block h-4 w-4 transform rounded-full transition-all duration-300 ease-in-out ${s.status === 'Active' ? 'translate-x-[20px] bg-[#515dfa] shadow-[0_0_8px_#515dfa]' : 'translate-x-0 bg-zinc-500'}"></span>
                         </button>
                         <div>
                             <div class="flex items-center gap-3">
-                                <h4 class="font-semibold text-zinc-100 text-sm ${s.status !== 'Active' ? 'opacity-50 line-through' : ''}">${s.name}</h4>
-                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-500/10 text-brand-400 border border-brand-500/20">${s.version}</span>
+                                <h4 class="font-bold text-zinc-100 text-base ${s.status !== 'Active' ? 'opacity-50 line-through' : ''}">${s.name}</h4>
+                                <span class="px-2.5 py-0.5 rounded-md text-[10px] font-extrabold bg-brand-500/20 text-brand-300 border border-brand-500/30">${s.version}</span>
                             </div>
-                            <div class="flex items-center gap-3 mt-1.5 text-[11px] text-zinc-400 font-medium tracking-wide">
-                                <span class="flex items-center gap-1.5 bg-surface-800 px-2 py-0.5 rounded border border-zinc-700/50" title="Game ID"><i data-lucide="gamepad-2" class="w-3 h-3 text-zinc-500"></i> ${s.gameId || 'Universal'}</span>
-                                <span class="flex items-center gap-1.5 bg-surface-800 px-2 py-0.5 rounded border border-zinc-700/50" title="Total Executions"><i data-lucide="activity" class="w-3 h-3 text-brand-500"></i> ${s.executions || 0}</span>
-                                <span class="flex items-center gap-1.5 text-zinc-500"><i data-lucide="calendar" class="w-3 h-3 text-zinc-600"></i> ${s.date}</span>
+                            <div class="flex items-center gap-4 mt-2 text-[11px] text-zinc-400 font-medium tracking-wide">
+                                <span class="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 rounded-md border border-white/10 shadow-sm" title="Game ID"><i data-lucide="gamepad-2" class="w-3.5 h-3.5 text-zinc-500"></i> ${s.gameId || 'Universal'}</span>
+                                <span class="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 rounded-md border border-white/10 shadow-sm" title="Total Executions"><i data-lucide="activity" class="w-3.5 h-3.5 text-brand-500"></i> ${s.executions || 0}</span>
+                                <span class="flex items-center gap-1.5 text-zinc-500"><i data-lucide="calendar" class="w-3.5 h-3.5"></i> ${s.date}</span>
                             </div>
                         </div>
                     </div>
-                    <div class="flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity flex-wrap sm:flex-nowrap">
-                        <button onclick="openEditScriptModal('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-brand-400 hover:bg-brand-500/10 rounded-md flex items-center gap-1.5"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i> EDIT</button>
-                        <button onclick="copyToClipboard('loadstring(game:HttpGet(\\'${window.location.origin}/raw/${projectId}/${s.id}\\'))()', 'Copied Script Loader!')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-md flex items-center gap-1.5"><i data-lucide="copy" class="w-3.5 h-3.5"></i> COPY LOADER</button>
-                        <button onclick="deleteScript('${projectId}', '${s.id}')" class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-md flex items-center gap-1.5"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> DELETE</button>
+                    <div class="flex items-center gap-2 opacity-100 sm:opacity-70 group-hover:opacity-100 transition-opacity flex-wrap sm:flex-nowrap">
+                        <button onclick="openEditScriptModal('${projectId}', '${s.id}')" class="px-4 py-2 text-xs font-bold text-zinc-300 hover:text-brand-300 bg-white/5 hover:bg-brand-500/20 border border-transparent hover:border-brand-500/30 rounded-xl flex items-center gap-2 backdrop-blur-md shadow-sm"><i data-lucide="edit-3" class="w-4 h-4"></i> EDIT</button>
+                        <button onclick="copyToClipboard('loadstring(game:HttpGet(\\'${window.location.origin}/raw/${projectId}/${s.id}\\'))()', 'Copied Script Loader!')" class="px-4 py-2 text-xs font-bold text-zinc-300 hover:text-emerald-300 bg-white/5 hover:bg-emerald-500/20 border border-transparent hover:border-emerald-500/30 rounded-xl flex items-center gap-2 backdrop-blur-md shadow-sm"><i data-lucide="copy" class="w-4 h-4"></i> COPY</button>
+                        <button onclick="deleteScript('${projectId}', '${s.id}')" class="px-4 py-2 text-xs font-bold text-zinc-300 hover:text-red-300 bg-white/5 hover:bg-red-500/20 border border-transparent hover:border-red-500/30 rounded-xl flex items-center gap-2 backdrop-blur-md shadow-sm"><i data-lucide="trash-2" class="w-4 h-4"></i> DELETE</button>
                     </div>
                 </div>
             `).join('');
@@ -750,13 +751,18 @@
 
         function openCreateProjectModal() {
             document.getElementById('modal-container').innerHTML = `
-            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-md shadow-2xl modal-animate ring-1 ring-white/5">
-                    <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2"><i data-lucide="folder-plus" class="text-brand-400 w-5 h-5"></i> Create Project</h3>
-                    <div class="space-y-4"><div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Custom Project Name</label><input type="text" id="input-cp-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none transition-colors"></div></div>
-                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50">
-                        <button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg">Cancel</button>
-                        <button id="btn-submit-project" onclick="submitCreateProject()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium shadow-lg min-w-[140px]">Create</button>
+            <div class="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                <div class="bg-[#0a0a0f]/80 backdrop-blur-2xl border border-white/10 p-8 rounded-[2rem] w-full max-w-md shadow-2xl modal-animate">
+                    <h3 class="text-2xl font-bold text-white mb-6 flex items-center gap-3"><div class="p-2 bg-brand-500/20 rounded-xl border border-brand-500/30"><i data-lucide="folder-plus" class="text-brand-400 w-5 h-5"></i></div> Create Project</h3>
+                    <div class="space-y-5">
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Custom Project Name</label>
+                            <input type="text" id="input-cp-name" class="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-brand-500 outline-none shadow-inner backdrop-blur-md">
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-3 mt-8 pt-6 border-t border-white/10">
+                        <button onclick="closeModal()" class="px-6 py-3 text-sm font-medium text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl backdrop-blur-md">Cancel</button>
+                        <button onclick="submitCreateProject()" class="bg-brand-600/80 hover:bg-brand-500 border border-brand-500/50 backdrop-blur-md text-white px-8 py-3 rounded-xl text-sm font-bold shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:-translate-y-1">Create</button>
                     </div>
                 </div>
             </div>`;
@@ -774,23 +780,23 @@
         function openProjectSettings(projectId) {
             const project = state.projects.find(p => p.id === projectId);
             document.getElementById('modal-container').innerHTML = `
-            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-md shadow-2xl modal-animate ring-1 ring-white/5">
-                    <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2"><i data-lucide="settings-2" class="text-zinc-400 w-5 h-5"></i> Project Settings</h3>
-                    <div class="space-y-4">
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Change Project Name</label><input type="text" id="input-ps-name" value="${project.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
-                        <div><label class="block text-xs font-bold text-brand-400 mb-1.5 uppercase flex items-center gap-1.5"><i data-lucide="bell-ring" class="w-3.5 h-3.5"></i> Execution Webhook URL</label><input type="text" id="input-ps-webhook" value="${project.webhookUrl || ''}" placeholder="https://discord.com/api/webhooks/..." class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none text-xs"></div>
-                        <div class="flex items-center justify-between bg-[#0a0a0c] p-3 rounded-lg border border-zinc-700">
-                            <div><p class="text-sm font-bold text-white">Free Mode</p><p class="text-xs text-zinc-500">Allow execution without a Key</p></div>
-                            <button id="toggle-freemode" onclick="toggleFreeMode()" class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] ${project.freeMode !== false ? 'border-[#272a54] bg-[#0a0a0c]' : 'border-zinc-800 bg-[#0a0a0c]'}"><span id="toggle-freemode-thumb" class="pointer-events-none absolute left-[2px] inline-block h-3.5 w-3.5 transform rounded-full transition-all duration-300 ${project.freeMode !== false ? 'translate-x-[15px] bg-[#515dfa]' : 'translate-x-0 bg-zinc-600'}"></span></button>
+            <div class="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                <div class="bg-[#0a0a0f]/80 backdrop-blur-2xl border border-white/10 p-8 rounded-[2rem] w-full max-w-md shadow-2xl modal-animate">
+                    <h3 class="text-2xl font-bold text-white mb-6 flex items-center gap-3"><div class="p-2 bg-zinc-800/50 rounded-xl border border-zinc-700/50"><i data-lucide="settings-2" class="text-zinc-300 w-5 h-5"></i></div> Project Settings</h3>
+                    <div class="space-y-5">
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Change Project Name</label><input type="text" id="input-ps-name" value="${project.name}" class="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-brand-500 outline-none backdrop-blur-md shadow-inner"></div>
+                        <div><label class="block text-xs font-bold text-brand-400 mb-2 uppercase tracking-wider flex items-center gap-2"><i data-lucide="bell-ring" class="w-4 h-4"></i> Execution Webhook URL</label><input type="text" id="input-ps-webhook" value="${project.webhookUrl || ''}" placeholder="https://discord.com/api/webhooks/..." class="w-full bg-black/40 border border-brand-500/30 rounded-xl p-3 text-white focus:border-brand-500 outline-none text-xs backdrop-blur-md shadow-inner"></div>
+                        <div class="flex items-center justify-between bg-black/40 p-4 rounded-xl border border-white/10 backdrop-blur-md shadow-inner">
+                            <div><p class="text-sm font-bold text-white">Free Mode</p><p class="text-xs text-zinc-500 mt-0.5">Allow execution without a Key</p></div>
+                            <button id="toggle-freemode" onclick="toggleFreeMode()" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] ${project.freeMode !== false ? 'border-[#272a54] bg-black/60' : 'border-white/10 bg-black/60'} shadow-inner"><span id="toggle-freemode-thumb" class="pointer-events-none absolute left-[2px] inline-block h-4 w-4 transform rounded-full transition-all duration-300 ${project.freeMode !== false ? 'translate-x-[20px] bg-[#515dfa] shadow-[0_0_8px_#515dfa]' : 'translate-x-0 bg-zinc-500'}"></span></button>
                         </div>
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">HWID Reset Cooldown (Hours)</label><input type="number" id="input-ps-cooldown" value="${project.hwidResetCooldown || 24}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">HWID Reset Cooldown (Hours)</label><input type="number" id="input-ps-cooldown" value="${project.hwidResetCooldown || 24}" class="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-brand-500 outline-none backdrop-blur-md shadow-inner"></div>
                     </div>
-                    <div class="flex items-center justify-between mt-8 pt-4 border-t border-zinc-800/50 flex-wrap sm:flex-nowrap gap-4">
-                        <button onclick="deleteProject('${projectId}')" class="text-red-400 hover:bg-red-500/10 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-medium w-full sm:w-auto"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete Project</button>
-                        <div class="flex gap-2 w-full sm:w-auto">
-                            <button onclick="closeModal()" class="flex-1 px-4 py-2.5 text-sm text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg">Cancel</button>
-                            <button onclick="saveProjectSettings('${projectId}')" class="flex-1 bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium">Save</button>
+                    <div class="flex items-center justify-between mt-8 pt-6 border-t border-white/10 flex-wrap sm:flex-nowrap gap-4">
+                        <button onclick="deleteProject('${projectId}')" class="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-5 py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-bold border border-red-500/30 w-full sm:w-auto hover:-translate-y-1 backdrop-blur-md"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete</button>
+                        <div class="flex gap-3 w-full sm:w-auto">
+                            <button onclick="closeModal()" class="flex-1 px-5 py-3 text-sm font-bold text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl backdrop-blur-md">Cancel</button>
+                            <button onclick="saveProjectSettings('${projectId}')" class="flex-1 bg-brand-600/80 hover:bg-brand-500 border border-brand-500/50 text-white px-6 py-3 rounded-xl text-sm font-bold backdrop-blur-md shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:-translate-y-1">Save</button>
                         </div>
                     </div>
                 </div>
@@ -804,11 +810,11 @@
             const btn = document.getElementById('toggle-freemode');
             const thumb = document.getElementById('toggle-freemode-thumb');
             if(window.tempFreeMode) {
-                btn.className = "relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] border-[#272a54] bg-[#0a0a0c]";
-                thumb.className = "pointer-events-none absolute left-[2px] inline-block h-3.5 w-3.5 transform rounded-full transition-all duration-300 translate-x-[15px] bg-[#515dfa]";
+                btn.className = "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] border-[#272a54] bg-black/60 shadow-inner";
+                thumb.className = "pointer-events-none absolute left-[2px] inline-block h-4 w-4 transform rounded-full transition-all duration-300 translate-x-[20px] bg-[#515dfa] shadow-[0_0_8px_#515dfa]";
             } else {
-                btn.className = "relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] border-zinc-800 bg-[#0a0a0c]";
-                thumb.className = "pointer-events-none absolute left-[2px] inline-block h-3.5 w-3.5 transform rounded-full transition-all duration-300 translate-x-0 bg-zinc-600";
+                btn.className = "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] border-white/10 bg-black/60 shadow-inner";
+                thumb.className = "pointer-events-none absolute left-[2px] inline-block h-4 w-4 transform rounded-full transition-all duration-300 translate-x-0 bg-zinc-500";
             }
         }
 
@@ -835,17 +841,17 @@
         function openAddScriptModal(projectId) {
             state.draftScript = { projectId, file: null, code: null };
             document.getElementById('modal-container').innerHTML = `
-            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
-                <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-lg shadow-2xl modal-animate ring-1 ring-white/5 my-8">
-                    <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2"><i data-lucide="file-code" class="text-brand-400 w-5 h-5"></i> Add New Script</h3>
+            <div class="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto">
+                <div class="bg-[#0a0a0f]/80 backdrop-blur-2xl border border-white/10 p-8 rounded-[2rem] w-full max-w-lg shadow-2xl modal-animate my-8">
+                    <h3 class="text-2xl font-bold text-white mb-6 flex items-center gap-3"><div class="p-2 bg-brand-500/20 rounded-xl border border-brand-500/30"><i data-lucide="file-code" class="text-brand-400 w-5 h-5"></i></div> Add New Script</h3>
                     <div class="space-y-5">
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Custom Script Name</label><input type="text" id="input-as-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Roblox Game ID</label><input type="text" id="input-as-gameid" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono" placeholder="Leave empty for Universal Script"></div>
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Upload File</label>
-                            <div id="drop-zone" class="border-2 border-dashed border-zinc-700 rounded-xl p-8 text-center bg-[#0a0a0c] hover:bg-surface-800 hover:border-brand-500/50 cursor-pointer relative"><input type="file" accept=".lua" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)"><div class="bg-surface-800 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"><i data-lucide="upload-cloud" class="w-6 h-6 text-brand-400"></i></div><p class="text-sm text-zinc-300 font-medium" id="drop-text">Drag & drop your file here</p></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Custom Script Name</label><input type="text" id="input-as-name" class="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-brand-500 outline-none backdrop-blur-md shadow-inner"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Roblox Game ID</label><input type="text" id="input-as-gameid" class="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-brand-500 outline-none font-mono backdrop-blur-md shadow-inner" placeholder="Leave empty for Universal Script"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Upload File</label>
+                            <div id="drop-zone" class="border-2 border-dashed border-white/20 rounded-2xl p-10 text-center bg-black/20 hover:bg-white/5 hover:border-brand-500/50 cursor-pointer relative transition-all backdrop-blur-md"><input type="file" accept=".lua" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)"><div class="bg-white/5 border border-white/10 w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner"><i data-lucide="upload-cloud" class="w-6 h-6 text-brand-400"></i></div><p class="text-sm text-zinc-300 font-bold" id="drop-text">Drag & drop your file here</p></div>
                         </div>
                     </div>
-                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50"><button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg">Cancel</button><button onclick="submitAddScript()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm">Upload Script</button></div>
+                    <div class="flex justify-end gap-3 mt-8 pt-6 border-t border-white/10"><button onclick="closeModal()" class="px-6 py-3 text-sm font-bold text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl backdrop-blur-md">Cancel</button><button onclick="submitAddScript()" class="bg-brand-600/80 hover:bg-brand-500 border border-brand-500/50 backdrop-blur-md text-white px-8 py-3 rounded-xl text-sm font-bold shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:-translate-y-1">Upload</button></div>
                 </div>
             </div>`;
             lucide.createIcons(); setupDragDrop();
@@ -859,7 +865,7 @@
                     const reader = new FileReader();
                     reader.onload = (event) => {
                         state.draftScript.file = file; state.draftScript.code = event.target.result; 
-                        document.getElementById('drop-text').innerHTML = `<span class="text-emerald-400 font-semibold bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">${file.name}</span>`;
+                        document.getElementById('drop-text').innerHTML = `<span class="text-emerald-300 font-black bg-emerald-500/20 px-4 py-1.5 rounded-lg border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)]">${file.name}</span>`;
                     };
                     reader.readAsText(file);
                 } else { showToast('Only .lua files are permitted', 'error'); }
@@ -869,8 +875,8 @@
             const dropZone = document.getElementById('drop-zone');
             if(!dropZone) return;
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, false));
-            ['dragenter', 'dragover'].forEach(evt => dropZone.addEventListener(evt, () => dropZone.classList.add('border-brand-500', 'bg-brand-500/5'), false));
-            ['dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, () => dropZone.classList.remove('border-brand-500', 'bg-brand-500/5'), false));
+            ['dragenter', 'dragover'].forEach(evt => dropZone.addEventListener(evt, () => dropZone.classList.add('border-brand-500', 'bg-brand-500/10'), false));
+            ['dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, () => dropZone.classList.remove('border-brand-500', 'bg-brand-500/10'), false));
             dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
         }
 
@@ -902,15 +908,15 @@
             const project = state.projects.find(p => p.id === projectId);
             const script = project.scripts.find(s => s.id === scriptId);
             document.getElementById('modal-container').innerHTML = `
-            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-lg shadow-2xl modal-animate ring-1 ring-white/5">
-                    <div class="flex justify-between items-center mb-5"><h3 class="text-xl font-bold text-white flex items-center gap-2"><i data-lucide="edit" class="text-brand-400 w-5 h-5"></i> Edit Script</h3><span class="px-2.5 py-1 rounded text-xs font-bold bg-brand-500/10 text-brand-400 border border-brand-500/20">${script.version}</span></div>
-                    <div class="space-y-4">
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Script Name</label><input type="text" id="input-es-name" value="${script.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Game ID</label><input type="text" id="input-es-gameid" value="${script.gameId || ''}" placeholder="Leave empty for Universal Script" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono"></div>
-                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Reupload File <span class="text-brand-400 normal-case">(Bumps Version)</span></label><input type="file" id="input-es-file" accept=".lua" class="w-full text-sm text-zinc-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:bg-surface-700 file:text-white hover:file:bg-surface-600 bg-[#0a0a0c] border border-zinc-700 rounded-lg outline-none cursor-pointer"></div>
+            <div class="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                <div class="bg-[#0a0a0f]/80 backdrop-blur-2xl border border-white/10 p-8 rounded-[2rem] w-full max-w-lg shadow-2xl modal-animate">
+                    <div class="flex justify-between items-center mb-6"><h3 class="text-2xl font-bold text-white flex items-center gap-3"><div class="p-2 bg-brand-500/20 rounded-xl border border-brand-500/30"><i data-lucide="edit" class="text-brand-400 w-5 h-5"></i></div> Edit Script</h3><span class="px-3 py-1 rounded-md text-xs font-bold bg-brand-500/20 text-brand-300 border border-brand-500/30">${script.version}</span></div>
+                    <div class="space-y-5">
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Script Name</label><input type="text" id="input-es-name" value="${script.name}" class="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-brand-500 outline-none backdrop-blur-md shadow-inner"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Game ID</label><input type="text" id="input-es-gameid" value="${script.gameId || ''}" placeholder="Leave empty for Universal Script" class="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-brand-500 outline-none font-mono backdrop-blur-md shadow-inner"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Reupload File <span class="text-brand-400 normal-case">(Bumps Version)</span></label><input type="file" id="input-es-file" accept=".lua" class="w-full text-sm text-zinc-400 file:mr-4 file:py-3 file:px-5 file:rounded-xl file:border-0 file:bg-white/5 file:text-white file:font-bold hover:file:bg-white/10 bg-black/40 border border-white/10 rounded-xl outline-none cursor-pointer backdrop-blur-md shadow-inner"></div>
                     </div>
-                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50"><button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white hover:bg-surface-700 rounded-lg">Cancel</button><button onclick="saveEditScript('${projectId}', '${scriptId}')" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm">Save Changes</button></div>
+                    <div class="flex justify-end gap-3 mt-8 pt-6 border-t border-white/10"><button onclick="closeModal()" class="px-6 py-3 text-sm font-bold text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl backdrop-blur-md">Cancel</button><button onclick="saveEditScript('${projectId}', '${scriptId}')" class="bg-brand-600/80 hover:bg-brand-500 border border-brand-500/50 backdrop-blur-md text-white px-8 py-3 rounded-xl text-sm font-bold shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:-translate-y-1">Save</button></div>
                 </div>
             </div>`;
             lucide.createIcons();
@@ -976,18 +982,18 @@
         function openCustomLoaderModal(projectId) {
             const project = state.projects.find(p => p.id === projectId);
             document.getElementById('modal-container').innerHTML = `
-            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <div class="bg-[#111113] border border-zinc-800/80 p-0 rounded-2xl w-full max-w-3xl shadow-2xl modal-animate overflow-hidden flex flex-col">
-                    <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-800/80 bg-surface-900/50 flex-wrap sm:flex-nowrap gap-2">
-                        <h3 class="text-sm font-bold text-white flex items-center gap-2"><i data-lucide="code" class="text-zinc-400 w-4 h-4"></i> Loader Code (Lua)</h3>
-                        <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
-                            <button onclick="copyLoaderLink('${projectId}')" class="px-3 py-1.5 text-xs text-zinc-300 hover:text-white bg-surface-800 rounded-md border border-zinc-700/50 flex-1 sm:flex-none">Copy URL</button>
-                            <button onclick="autoGenerateLoader('${projectId}')" class="px-3 py-1.5 text-xs text-brand-400 bg-brand-500/10 rounded-md border border-brand-500/20 flex-1 sm:flex-none">Auto Gen</button>
-                            <button onclick="saveLoaderCode('${projectId}')" class="px-3 py-1.5 text-xs text-white bg-brand-600 rounded-md shadow-lg shadow-brand-500/20 flex-1 sm:flex-none">Save</button>
-                            <button onclick="closeModal()" class="p-1.5 text-zinc-500 hover:text-white rounded-md ml-2"><i data-lucide="x" class="w-4 h-4"></i></button>
+            <div class="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
+                <div class="bg-[#0a0a0f]/80 backdrop-blur-2xl border border-white/10 p-0 rounded-3xl w-full max-w-3xl shadow-2xl modal-animate overflow-hidden flex flex-col h-[80vh] max-h-[600px]">
+                    <div class="flex items-center justify-between px-8 py-5 border-b border-white/10 bg-black/20 flex-wrap sm:flex-nowrap gap-4">
+                        <h3 class="text-lg font-bold text-white flex items-center gap-3"><div class="p-1.5 bg-zinc-800/50 rounded-lg border border-zinc-700/50"><i data-lucide="code" class="text-zinc-300 w-5 h-5"></i></div> Loader Code (Lua)</h3>
+                        <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
+                            <button onclick="copyLoaderLink('${projectId}')" class="px-4 py-2 text-xs font-bold text-zinc-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 flex-1 sm:flex-none backdrop-blur-md">Copy URL</button>
+                            <button onclick="autoGenerateLoader('${projectId}')" class="px-4 py-2 text-xs font-bold text-brand-300 bg-brand-500/20 hover:bg-brand-500/30 rounded-xl border border-brand-500/30 flex-1 sm:flex-none backdrop-blur-md">Auto Gen</button>
+                            <button onclick="saveLoaderCode('${projectId}')" class="px-5 py-2 text-xs font-bold text-white bg-brand-600/80 hover:bg-brand-500 border border-brand-500/50 rounded-xl shadow-[0_0_15px_rgba(79,70,229,0.3)] flex-1 sm:flex-none backdrop-blur-md">Save</button>
+                            <button onclick="closeModal()" class="p-2 text-zinc-500 hover:text-white rounded-xl bg-white/5 hover:bg-red-500/20 hover:text-red-400 border border-transparent hover:border-red-500/30 ml-2 transition-all"><i data-lucide="x" class="w-5 h-5"></i></button>
                         </div>
                     </div>
-                    <div class="p-4 bg-[#0a0a0c] flex-1 min-h-[300px]"><textarea id="loader-code-textarea">${project.loaderCode || ""}</textarea></div>
+                    <div class="p-6 bg-black/40 flex-1 relative"><textarea id="loader-code-textarea">${project.loaderCode || ""}</textarea></div>
                 </div>
             </div>`;
             lucide.createIcons();
