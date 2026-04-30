@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sanctuary | Script Manager</title>
+    <title>Luau-Auth | Script Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
@@ -34,7 +34,7 @@
         .toast-enter { animation: toastEnter 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
         .toast-leave { animation: toastLeave 0.3s cubic-bezier(0.5, 0, 0.2, 1) forwards; }
         .modal-animate { animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .cm-s-sanctuary.CodeMirror { background: #121215; color: #e2e8f0; border-radius: 0.75rem; padding: 1.25rem; font-family: monospace; font-size: 13px; line-height: 1.6; border: 1px solid rgba(39, 39, 42, 0.8); height: 320px; transition: all 0.3s ease; }
+        .cm-s-luauauth.CodeMirror { background: #121215; color: #e2e8f0; border-radius: 0.75rem; padding: 1.25rem; font-family: monospace; font-size: 13px; line-height: 1.6; border: 1px solid rgba(39, 39, 42, 0.8); height: 320px; transition: all 0.3s ease; }
         button, div, input, select { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         button:hover { transform: translateY(-1px); }
         button:active { transform: translateY(1px); }
@@ -68,7 +68,7 @@
         </div>
     </aside>
 
-    <main class="flex-1 overflow-y-auto relative bg-[#030303] flex flex-col transition-all duration-500 w-full">
+    <main class="flex-1 overflow-y-auto relative bg-[#030303] flex flex-col transition-all duration-500 w-full min-w-0">
         <div id="main-content" class="p-4 sm:p-8 max-w-6xl mx-auto flex-1 w-full overflow-x-hidden">
             <div class="flex items-center justify-center h-full">
                 <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-brand-500"></i>
@@ -418,7 +418,7 @@
             const projectOptions = state.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
             
             mainContainer.innerHTML = `
-                <div class="max-w-6xl mx-auto modal-animate w-full overflow-hidden">
+                <div class="max-w-6xl mx-auto modal-animate w-full">
                     <div class="flex justify-between items-center mb-8">
                         <div><h2 class="text-3xl font-bold text-white tracking-tight">HWID Keys</h2><p class="text-zinc-500 text-sm mt-1">Generate and manage access keys for your locked projects.</p></div>
                     </div>
@@ -445,7 +445,7 @@
 
                     <div class="bg-surface-800 border border-zinc-800 rounded-xl hover:border-zinc-700 w-full overflow-hidden">
                         <div class="overflow-x-auto w-full max-w-full">
-                            <table class="w-full text-left text-sm whitespace-nowrap min-w-[800px]">
+                            <table class="w-full text-left text-sm whitespace-nowrap min-w-max">
                                 <thead class="bg-surface-900/50 border-b border-zinc-800 text-zinc-400">
                                     <tr><th class="p-4 font-medium">Script Key</th><th class="p-4 font-medium">Note</th><th class="p-4 font-medium">HWID Status</th><th class="p-4 font-medium">Expires</th><th class="p-4 font-medium text-right">Actions</th></tr>
                                 </thead>
@@ -552,7 +552,7 @@
 
         function renderRegister(mainContainer) {
             mainContainer.innerHTML = `
-                <div class="max-w-6xl mx-auto modal-animate w-full overflow-hidden">
+                <div class="max-w-6xl mx-auto modal-animate w-full">
                     <div class="flex justify-between items-center mb-8">
                         <div><h2 class="text-3xl font-bold text-white tracking-tight">Key Management</h2><p class="text-zinc-500 text-sm mt-1">Admin control over user access keys.</p></div>
                         <div class="flex gap-2">
@@ -568,7 +568,7 @@
 
                     <div class="bg-surface-800 border border-zinc-800 rounded-xl hover:border-zinc-700 w-full overflow-hidden">
                         <div class="overflow-x-auto w-full max-w-full">
-                            <table class="w-full text-left text-sm whitespace-nowrap min-w-[800px]">
+                            <table class="w-full text-left text-sm whitespace-nowrap min-w-max">
                                 <thead class="bg-surface-900/50 border-b border-zinc-800 text-zinc-400">
                                     <tr><th class="p-4 font-medium">API Key</th><th class="p-4 font-medium">Claimed By</th><th class="p-4 font-medium">Expires In</th><th class="p-4 font-medium text-right">Actions</th></tr>
                                 </thead>
@@ -1000,13 +1000,13 @@
                 let scriptsTable = "";
                 if (project && project.scripts) {
                     project.scripts.forEach(s => {
-                        if (s.gameId && s.gameId !== "") { scriptsTable += `    [${s.gameId}] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`; } 
+                        if (s.gameId && s.gameId !== "") { scriptsTable += `    ["${s.gameId}"] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`; } 
                         else { scriptsTable += `    ["Universal"] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`; }
                     });
                 }
                 let authSnippet = project.freeMode === false ? `\nlocal AuthKey = getgenv().script_key or ""\nlocal hwid = (gethwid and gethwid()) or game:GetService("RbxAnalyticsService"):GetClientId()\n` : "";
                 let callSnippet = project.freeMode === false ? `loadstring(game:HttpGet(Script .. "?key=" .. AuthKey .. "&hwid=" .. hwid))()` : `loadstring(game:HttpGet(Script))()`;
-                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\n\nlocal Script = Scripts[game.GameId] or Scripts["Universal"]\nif Script then${authSnippet}\n    ${callSnippet}\nelse\n    warn("Luau-Auth: No valid script found for this game.")\nend`);
+                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\nlocal Script = Scripts[tostring(game.GameId)] or Scripts[game.GameId] or Scripts["Universal"]\nif Script then${authSnippet}\n    ${callSnippet}\nelse\n    warn("Luau-Auth: No valid script found for this game.")\nend`);
             }
         }
 
