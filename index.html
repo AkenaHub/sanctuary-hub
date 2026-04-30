@@ -29,37 +29,13 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
-        
-        @keyframes toastEnter {
-            0% { transform: translateX(100%) scale(0.9); opacity: 0; }
-            100% { transform: translateX(0) scale(1); opacity: 1; }
-        }
-        @keyframes toastLeave {
-            0% { transform: translateX(0) scale(1); opacity: 1; }
-            100% { transform: translateX(100%) scale(0.9); opacity: 0; }
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: scale(0.98); }
-            to { opacity: 1; transform: scale(1); }
-        }
+        @keyframes toastEnter { 0% { transform: translateX(100%) scale(0.9); opacity: 0; } 100% { transform: translateX(0) scale(1); opacity: 1; } }
+        @keyframes toastLeave { 0% { transform: translateX(0) scale(1); opacity: 1; } 100% { transform: translateX(100%) scale(0.9); opacity: 0; } }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
         .toast-enter { animation: toastEnter 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
         .toast-leave { animation: toastLeave 0.3s cubic-bezier(0.5, 0, 0.2, 1) forwards; }
         .modal-animate { animation: fadeIn 0.2s ease-out forwards; }
-
-        .cm-s-sanctuary.CodeMirror { 
-            background: #121215; color: #e2e8f0; border-radius: 0.75rem; padding: 1.25rem; 
-            font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; 
-            line-height: 1.6; border: 1px solid rgba(39, 39, 42, 0.8); height: 320px;
-        }
-        .cm-s-sanctuary .CodeMirror-cursor { border-left: 2px solid #515dfa; }
-        .cm-s-sanctuary span.cm-keyword { color: #c678dd; } 
-        .cm-s-sanctuary span.cm-string { color: #98c379; } 
-        .cm-s-sanctuary span.cm-comment { color: #5c6370; font-style: italic; } 
-        .cm-s-sanctuary span.cm-variable, .cm-s-sanctuary span.cm-property, .cm-s-sanctuary span.cm-def { color: #e2e8f0; } 
-        .cm-s-sanctuary span.cm-builtin, .cm-s-sanctuary span.cm-variable-2 { color: #61afef; }
-        .cm-s-sanctuary span.cm-operator, .cm-s-sanctuary span.cm-punctuation { color: #abb2bf; }
-        .cm-s-sanctuary .CodeMirror-selected { background: rgba(79, 70, 229, 0.3) !important; }
-        .cm-s-sanctuary.CodeMirror-focused { border-color: rgba(79, 70, 229, 0.5); box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.5); outline: none; }
+        .cm-s-sanctuary.CodeMirror { background: #121215; color: #e2e8f0; border-radius: 0.75rem; padding: 1.25rem; font-family: monospace; font-size: 13px; line-height: 1.6; border: 1px solid rgba(39, 39, 42, 0.8); height: 320px; }
     </style>
 </head>
 <body class="bg-black text-zinc-100 font-sans h-screen flex overflow-hidden selection:bg-brand-500/30">
@@ -73,7 +49,13 @@
                 Sanctuary
             </h1>
         </div>
-        <nav class="flex-1 p-4 space-y-1">
+        
+        <!-- User Profile Area -->
+        <div id="user-profile-area" class="p-4 border-b border-zinc-800/50">
+            <!-- Injected via JS -->
+        </div>
+
+        <nav id="sidebar-nav" class="flex-1 p-4 space-y-1 hidden">
             <button onclick="setTab('projects')" id="tab-projects" class="w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium">
                 <i data-lucide="folder" class="w-5 h-5"></i> Projects
             </button>
@@ -84,9 +66,16 @@
     </aside>
 
     <main class="flex-1 overflow-y-auto relative bg-[#030303]">
+        <!-- Key Expiration Warning Banner -->
+        <div id="key-warning-banner" class="hidden bg-orange-500/10 border-b border-orange-500/20 px-8 py-3 flex items-center justify-center gap-2 text-orange-400 text-sm font-medium">
+            <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+            <span>Warning: Your API Key will expire in <span id="key-expire-days" class="font-bold"></span> days. You will lose upload/edit access.</span>
+        </div>
+
         <div id="main-content" class="p-8 max-w-6xl mx-auto min-h-full">
-            <div class="flex items-center justify-center h-full">
-                <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-brand-500"></i>
+            <div class="flex items-center justify-center h-full flex-col gap-4">
+                <h2 class="text-2xl font-bold">Welcome to Sanctuary</h2>
+                <p class="text-zinc-500 text-sm">Please log in with Discord to access the hub.</p>
             </div>
         </div>
     </main>
@@ -98,101 +87,34 @@
         const state = {
             activeTab: 'projects',
             projects: [],
+            user: null,
+            apiKey: localStorage.getItem('sanctuary_api_key') || "",
             draftScript: { projectId: null, file: null, code: null }
         };
-
-        // --- API Syncing w/ Local Storage Auto-Restore ---
-        async function loadFromServer() {
-            // 1. Load from browser's local storage as a safety net
-            const localData = localStorage.getItem('sanctuary_data');
-            if (localData) {
-                state.projects = JSON.parse(localData);
-            }
-
-            // 2. Sync with Backend
-            try {
-                const res = await fetch('/api/sync');
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.projects && data.projects.length > 0) {
-                        // Server has data, use it as source of truth
-                        state.projects = data.projects;
-                        localStorage.setItem('sanctuary_data', JSON.stringify(state.projects));
-                    } else if (state.projects.length > 0) {
-                        // Server is wiped (Railway restarted), but we have local data!
-                        // Push our local data to the server to restore it instantly.
-                        await syncToServer();
-                    }
-                }
-            } catch (err) {
-                console.warn('Backend disconnected, running in local mode.', err);
-            } finally {
-                renderApp();
-            }
-        }
-
-        async function syncToServer() {
-            // Save locally first
-            localStorage.setItem('sanctuary_data', JSON.stringify(state.projects));
-
-            // Push to backend
-            try {
-                await fetch('/api/sync', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ projects: state.projects })
-                });
-            } catch (err) {
-                showToast('Failed to save to server', 'error');
-            }
-        }
 
         // --- Core Utilities ---
         function showToast(message, type = 'success') {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
             const isError = type === 'error';
-            
             toast.className = `toast-enter pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border border-zinc-800 bg-[#111113] shadow-2xl text-sm font-semibold text-white`;
             toast.innerHTML = `<i data-lucide="${isError ? 'alert-circle' : 'check-circle'}" class="w-[18px] h-[18px] fill-white text-[#111113]"></i><span>${message}</span>`;
-            
             container.appendChild(toast);
             lucide.createIcons();
-
-            setTimeout(() => {
-                toast.classList.remove('toast-enter');
-                toast.classList.add('toast-leave');
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
+            setTimeout(() => { toast.classList.remove('toast-enter'); toast.classList.add('toast-leave'); setTimeout(() => toast.remove(), 300); }, 3000);
         }
 
         function copyToClipboard(text, successMsg) {
-            const textArea = document.createElement("textarea");
-            textArea.value = text;
-            textArea.style.position = "fixed"; 
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            try {
-                document.execCommand('copy');
-                showToast(successMsg || 'Copied to clipboard!');
-            } catch (err) {
-                showToast('Failed to copy text', 'error');
-            }
+            const textArea = document.createElement("textarea"); textArea.value = text; textArea.style.position = "fixed"; 
+            document.body.appendChild(textArea); textArea.focus(); textArea.select();
+            try { document.execCommand('copy'); showToast(successMsg || 'Copied to clipboard!'); } catch (err) { showToast('Failed to copy text', 'error'); }
             document.body.removeChild(textArea);
         }
 
         async function generateSHA256(text) {
             const msgBuffer = new TextEncoder().encode(text + Date.now().toString());
             const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-
-        function getShortDate() {
-            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-            const today = new Date();
-            return `${months.at(today.getMonth())} ${today.getDate()}`;
+            return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
         function incrementVersion(ver) {
@@ -202,43 +124,107 @@
             return `v${parts.join('.')}`;
         }
 
-        // --- File Handling Functions ---
-        function handleFileSelect(e) { handleFiles(e.target.files); }
+        // --- Authentication & Syncing ---
+        async function initApp() {
+            // Check for logged in user
+            const userData = localStorage.getItem('sanctuary_user');
+            if (userData) {
+                state.user = JSON.parse(userData);
+                document.getElementById('sidebar-nav').classList.remove('hidden');
+                
+                // Render Profile Area
+                document.getElementById('user-profile-area').innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 font-bold uppercase border border-brand-500/30">
+                            ${state.user.username.charAt(0)}
+                        </div>
+                        <div class="overflow-hidden">
+                            <p class="text-sm font-semibold text-white truncate">${state.user.username}</p>
+                            <p class="text-[10px] uppercase tracking-widest text-zinc-500 font-bold flex items-center gap-1">
+                                ${state.user.isAdmin ? '<i data-lucide="crown" class="w-3 h-3 text-yellow-500"></i> ADMIN' : 'MEMBER'}
+                            </p>
+                        </div>
+                    </div>
+                `;
+                
+                checkApiKeyStatus();
+                await loadFromServer();
+            } else {
+                document.getElementById('user-profile-area').innerHTML = `
+                    <a href="/api/auth/discord" class="w-full flex items-center justify-center gap-2 bg-[#5865F2] hover:bg-[#4752C4] text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
+                        <i data-lucide="log-in" class="w-4 h-4"></i> Login with Discord
+                    </a>
+                `;
+            }
+            lucide.createIcons();
+        }
 
-        function handleFiles(files) {
-            if(files && files.length > 0) {
-                const file = files.item(0); 
-                if(file && file.name && file.name.toLowerCase().endsWith('.lua')) {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        state.draftScript.file = file;
-                        state.draftScript.code = event.target.result; // Saves the actual Lua code!
-                        document.getElementById('drop-text').innerHTML = `<span class="text-emerald-400 font-semibold bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">${file.name}</span>`;
-                    };
-                    reader.readAsText(file);
-                } else {
-                    showToast('Only .lua files are permitted', 'error');
+        async function checkApiKeyStatus() {
+            if (!state.apiKey || state.user.isAdmin) return;
+            try {
+                const res = await fetch('/api/check-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ apiKey: state.apiKey })
+                });
+                const data = await res.json();
+                
+                if (data.valid) {
+                    const daysLeft = Math.ceil((data.expiresAt - Date.now()) / (1000 * 60 * 60 * 24));
+                    if (daysLeft <= 3 && daysLeft >= 1) {
+                        document.getElementById('key-warning-banner').classList.remove('hidden');
+                        document.getElementById('key-expire-days').innerText = daysLeft;
+                    } else {
+                        document.getElementById('key-warning-banner').classList.add('hidden');
+                    }
                 }
+            } catch (err) {}
+        }
+
+        async function loadFromServer() {
+            try {
+                const res = await fetch('/api/sync');
+                if (res.ok) {
+                    const data = await res.json();
+                    state.projects = data.projects || [];
+                }
+            } catch (err) {
+                console.warn('Backend disconnected.');
+            } finally {
+                renderApp();
             }
         }
 
-        function setupDragDrop() {
-            const dropZone = document.getElementById('drop-zone');
-            if(!dropZone) return;
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, false));
-            ['dragenter', 'dragover'].forEach(evt => dropZone.addEventListener(evt, () => dropZone.classList.add('border-brand-500', 'bg-brand-500/5'), false));
-            ['dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, () => dropZone.classList.remove('border-brand-500', 'bg-brand-500/5'), false));
-            dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+        async function syncToServer() {
+            try {
+                const res = await fetch('/api/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        projects: state.projects,
+                        apiKey: state.apiKey,
+                        discordId: state.user.id
+                    })
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+            } catch (err) {
+                showToast(err.message || 'Failed to save. Check your API key.', 'error');
+                throw err; // Stop UI updates if save failed
+            }
         }
 
         // --- Rendering Engine ---
         function setTab(tab) { state.activeTab = tab; renderApp(); }
 
         function renderApp() {
+            if (!state.user) return; // Wait for login
+
             document.getElementById('tab-projects').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'projects' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
             document.getElementById('tab-settings').className = `w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all text-sm font-medium ${state.activeTab === 'settings' ? 'border border-[#272a54] bg-[#15172b] text-[#515dfa]' : 'border border-transparent text-zinc-400 hover:bg-surface-800 hover:text-white'}`;
 
             const main = document.getElementById('main-content');
+            
             if (state.activeTab === 'projects') {
                 main.innerHTML = `
                     <div class="flex justify-between items-center mb-8">
@@ -246,18 +232,90 @@
                             <h2 class="text-3xl font-bold text-white tracking-tight">Projects</h2>
                             <p class="text-zinc-500 text-sm mt-1">Manage your script hubs and loaders.</p>
                         </div>
-                        <button onclick="openCreateProjectModal()" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-all shadow-[0_0_15px_rgba(79,70,229,0.3)] hover:shadow-[0_0_20px_rgba(79,70,229,0.5)]">
+                        <button onclick="openCreateProjectModal()" class="bg-brand-600 hover:bg-brand-500 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-all shadow-[0_0_15px_rgba(79,70,229,0.3)]">
                             <i data-lucide="plus" class="w-5 h-5"></i> Create Project
                         </button>
                     </div>
                     <div class="space-y-4">${renderProjectsList()}</div>
                 `;
             } else {
-                main.innerHTML = `<div class="max-w-2xl"><h2 class="text-3xl font-bold text-white tracking-tight mb-8">Settings</h2><div class="bg-surface-800 border border-zinc-800 rounded-xl p-6"><p class="text-sm text-zinc-500">API connection successfully synchronized.</p></div></div>`;
+                renderSettings(main);
             }
             lucide.createIcons();
         }
 
+        function renderSettings(mainContainer) {
+            let adminHtml = '';
+            
+            // Admin Panel UI
+            if (state.user && state.user.isAdmin) {
+                adminHtml = `
+                <div class="bg-brand-950/20 border border-brand-500/30 rounded-xl p-6 mb-6">
+                    <h3 class="text-lg font-bold text-brand-400 flex items-center gap-2 mb-4"><i data-lucide="shield-alert" class="w-5 h-5"></i> Admin: Generate API Key</h3>
+                    <div class="flex gap-3 items-end">
+                        <div class="flex-1">
+                            <label class="block text-xs font-bold text-brand-400/70 mb-1.5 uppercase">Duration (Days)</label>
+                            <input type="number" id="input-admin-days" value="30" class="w-full bg-[#0a0a0c] border border-brand-500/30 rounded-lg p-2.5 text-white focus:border-brand-500 outline-none">
+                        </div>
+                        <button onclick="generateApiKey()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium h-[42px]">Generate Key</button>
+                    </div>
+                    <div id="admin-key-result" class="hidden mt-4 p-3 bg-[#0a0a0c] border border-brand-500/20 rounded-lg flex items-center justify-between">
+                        <code id="admin-new-key" class="text-emerald-400 font-mono text-sm"></code>
+                        <button onclick="copyToClipboard(document.getElementById('admin-new-key').innerText, 'Key Copied!')" class="text-zinc-400 hover:text-white"><i data-lucide="copy" class="w-4 h-4"></i></button>
+                    </div>
+                </div>`;
+            }
+
+            // Normal Settings UI
+            mainContainer.innerHTML = `
+                <div class="max-w-2xl">
+                    <h2 class="text-3xl font-bold text-white tracking-tight mb-8">Settings</h2>
+                    ${adminHtml}
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl p-6">
+                        <h3 class="text-lg font-bold text-white flex items-center gap-2 mb-4"><i data-lucide="key" class="w-5 h-5"></i> Access Configuration</h3>
+                        <div>
+                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Your API Key ${state.user.isAdmin ? '(Not needed for Admins)' : ''}</label>
+                            <div class="flex gap-3">
+                                <input type="password" id="input-user-apikey" value="${state.apiKey}" class="flex-1 bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono placeholder:text-zinc-700" placeholder="SNC-XXXXXXXXXXXXX" ${state.user.isAdmin ? 'disabled' : ''}>
+                                <button onclick="saveApiKey()" class="bg-surface-700 hover:bg-surface-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium border border-zinc-700/50" ${state.user.isAdmin ? 'hidden' : ''}>Save Key</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- Admin Functions ---
+        async function generateApiKey() {
+            const days = document.getElementById('input-admin-days').value;
+            try {
+                const res = await fetch('/api/admin/generate-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ discordId: state.user.id, days: days })
+                });
+                const data = await res.json();
+                if (data.key) {
+                    document.getElementById('admin-key-result').classList.remove('hidden');
+                    document.getElementById('admin-new-key').innerText = data.key;
+                    showToast('New API Key generated!');
+                } else {
+                    showToast(data.error || 'Failed to generate key', 'error');
+                }
+            } catch (err) {
+                showToast('Server error', 'error');
+            }
+        }
+
+        function saveApiKey() {
+            const key = document.getElementById('input-user-apikey').value.trim();
+            state.apiKey = key;
+            localStorage.setItem('sanctuary_api_key', key);
+            showToast('API Key saved locally!');
+            checkApiKeyStatus(); // Re-check expiration
+        }
+
+        // --- Project & Script Management ---
         function toggleProject(id) {
             const proj = state.projects.find(p => p.id === id);
             if (proj) proj.expanded = !proj.expanded;
@@ -297,11 +355,9 @@
 
         function renderScripts(scripts, projectId) {
             if (scripts.length === 0) return `<div class="text-sm text-zinc-500 text-center py-6 bg-surface-900/50 rounded-lg border border-zinc-800/30">No scripts added. Click "Add Script".</div>`;
-            
             return scripts.map(s => `
                 <div class="group flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-[#121215] border border-zinc-800/80 rounded-lg hover:border-brand-500/30 transition-all">
                     <div class="flex items-center gap-4 mb-3 sm:mb-0">
-                        <!-- Custom iOS-style Redesigned Toggle -->
                         <button onclick="toggleScriptStatusDirect('${projectId}', '${s.id}')" class="relative inline-flex h-[22px] w-[42px] flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none transition-all border-[1.5px] ${s.status === 'Active' ? 'border-[#272a54] bg-[#0a0a0c]' : 'border-zinc-800 bg-[#0a0a0c]'}" title="Toggle Active">
                             <span class="pointer-events-none absolute left-[2px] inline-block h-[15px] w-[15px] transform rounded-full transition-all duration-300 ease-in-out ${s.status === 'Active' ? 'translate-x-[19px] bg-[#515dfa]' : 'translate-x-0 bg-zinc-600'}"></span>
                         </button>
@@ -325,7 +381,7 @@
             `).join('');
         }
 
-        // --- Modals Management ---
+        // Modals
         function closeModal() { document.getElementById('modal-container').innerHTML = ''; }
 
         function openCreateProjectModal() {
@@ -333,37 +389,33 @@
             <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-md shadow-2xl modal-animate ring-1 ring-white/5">
                     <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2"><i data-lucide="folder-plus" class="text-brand-400 w-5 h-5"></i> Create Project</h3>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Custom Project Name</label>
-                            <input type="text" id="input-cp-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none">
-                        </div>
-                    </div>
+                    <div class="space-y-4"><div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Custom Project Name</label><input type="text" id="input-cp-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div></div>
                     <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50">
                         <button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white rounded-lg">Cancel</button>
-                        <button id="btn-submit-project" onclick="submitCreateProject()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium shadow-lg min-w-[140px]">Create Project</button>
+                        <button id="btn-submit-project" onclick="submitCreateProject()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium shadow-lg min-w-[140px]">Create</button>
                     </div>
                 </div>
             </div>`;
-            lucide.createIcons();
-            setTimeout(() => document.getElementById('input-cp-name')?.focus(), 100);
+            lucide.createIcons(); setTimeout(() => document.getElementById('input-cp-name')?.focus(), 100);
         }
 
         async function submitCreateProject() {
             const name = document.getElementById('input-cp-name').value.trim();
             if (!name) return showToast('Please enter a project name', 'error');
-
-            const btn = document.getElementById('btn-submit-project');
-            btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>';
-            btn.disabled = true;
-
             const id = await generateSHA256(name);
+            
+            // Optimistically add to state
             state.projects.push({ id, name, expanded: true, loaderCode: "", scripts: [] });
             
-            await syncToServer(); // Save instantly
-            closeModal();
-            showToast('Project created successfully');
-            renderApp();
+            try {
+                await syncToServer();
+                closeModal();
+                showToast('Project created');
+                renderApp();
+            } catch (err) {
+                // Revert on fail
+                state.projects.pop();
+            }
         }
 
         function openProjectSettings(projectId) {
@@ -372,10 +424,7 @@
             <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-md shadow-2xl modal-animate ring-1 ring-white/5">
                     <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2"><i data-lucide="settings-2" class="text-zinc-400 w-5 h-5"></i> Project Settings</h3>
-                    <div>
-                        <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Change Project Name</label>
-                        <input type="text" id="input-ps-name" value="${project.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none">
-                    </div>
+                    <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Change Project Name</label><input type="text" id="input-ps-name" value="${project.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
                     <div class="flex items-center justify-between mt-8 pt-4 border-t border-zinc-800/50">
                         <button onclick="deleteProject('${projectId}')" class="text-red-400 hover:bg-red-500/10 px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete Project</button>
                         <div class="flex gap-2">
@@ -392,112 +441,84 @@
             const name = document.getElementById('input-ps-name').value.trim();
             if (!name) return showToast('Project name cannot be empty', 'error');
             const project = state.projects.find(p => p.id === projectId);
-            if (project) {
-                project.name = name;
+            const oldName = project.name;
+            project.name = name;
+            try {
                 await syncToServer();
+                closeModal();
+                showToast('Project updated');
+                renderApp();
+            } catch (err) {
+                project.name = oldName; // revert
             }
-            closeModal();
-            showToast('Project updated');
-            renderApp();
         }
 
         async function deleteProject(projectId) {
-            state.projects = state.projects.filter(p => p.id !== projectId);
-            await syncToServer();
-            closeModal();
-            showToast('Project deleted successfully');
-            renderApp();
+            const pIndex = state.projects.findIndex(p => p.id === projectId);
+            const pStore = state.projects[pIndex];
+            state.projects.splice(pIndex, 1);
+            try {
+                await syncToServer();
+                closeModal();
+                showToast('Project deleted');
+                renderApp();
+            } catch (err) {
+                state.projects.splice(pIndex, 0, pStore); // revert
+            }
         }
 
         function openAddScriptModal(projectId) {
             state.draftScript = { projectId, file: null, code: null };
             document.getElementById('modal-container').innerHTML = `
-            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
                 <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-lg shadow-2xl modal-animate ring-1 ring-white/5 my-8">
                     <h3 class="text-xl font-bold text-white mb-5 flex items-center gap-2"><i data-lucide="file-code" class="text-brand-400 w-5 h-5"></i> Add New Script</h3>
                     <div class="space-y-5">
-                        <div>
-                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Custom Script Name</label>
-                            <input type="text" id="input-as-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none" placeholder="e.g. ESP & Wallhack">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Roblox Game ID</label>
-                            <input type="text" id="input-as-gameid" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono" placeholder="123456789">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Upload File <span class="text-zinc-500 font-normal">(.lua only)</span></label>
-                            <div id="drop-zone" class="border-2 border-dashed border-zinc-700 rounded-xl p-8 text-center bg-[#0a0a0c] hover:bg-surface-800 hover:border-brand-500/50 transition-all cursor-pointer relative group">
-                                <input type="file" accept=".lua" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)">
-                                <div class="bg-surface-800 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"><i data-lucide="upload-cloud" class="w-6 h-6 text-brand-400"></i></div>
-                                <p class="text-sm text-zinc-300 font-medium" id="drop-text">Drag & drop your file here</p>
-                            </div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Custom Script Name</label><input type="text" id="input-as-name" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Roblox Game ID</label><input type="text" id="input-as-gameid" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Upload File <span class="text-zinc-500 font-normal">(.lua only)</span></label>
+                            <div id="drop-zone" class="border-2 border-dashed border-zinc-700 rounded-xl p-8 text-center bg-[#0a0a0c] hover:bg-surface-800 hover:border-brand-500/50 cursor-pointer relative"><input type="file" accept=".lua" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)"><div class="bg-surface-800 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"><i data-lucide="upload-cloud" class="w-6 h-6 text-brand-400"></i></div><p class="text-sm text-zinc-300 font-medium" id="drop-text">Drag & drop your file here</p></div>
                         </div>
                     </div>
-                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50">
-                        <button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white rounded-lg">Cancel</button>
-                        <button id="btn-submit-script" onclick="submitAddScript()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium min-w-[140px]">Upload Script</button>
-                    </div>
+                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50"><button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white rounded-lg">Cancel</button><button onclick="submitAddScript()" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm">Upload Script</button></div>
                 </div>
             </div>`;
-            lucide.createIcons();
-            setupDragDrop();
+            lucide.createIcons(); setupDragDrop();
         }
 
         async function submitAddScript() {
             const name = document.getElementById('input-as-name').value.trim();
             const gameId = document.getElementById('input-as-gameid').value.trim();
             const { file, code, projectId } = state.draftScript;
-
             if(!name || !gameId || !file || !code) return showToast('Please fill all fields and select a valid Lua file.', 'error');
 
             const project = state.projects.find(p => p.id === projectId);
-            if(project) {
-                const btn = document.getElementById('btn-submit-script');
-                btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-white"></i>';
-                btn.disabled = true;
-
-                const scriptId = await generateSHA256(name + gameId + "script");
-                
-                project.scripts.push({
-                    id: scriptId, name, gameId, status: 'Active', version: 'v0.0.1', date: getShortDate(), fileName: file.name, code: code
-                });
-                
+            const scriptId = await generateSHA256(name + gameId + "script");
+            
+            const newScript = { id: scriptId, name, gameId, status: 'Active', version: 'v0.0.1', date: getShortDate(), fileName: file.name, code };
+            project.scripts.push(newScript);
+            
+            try {
                 await syncToServer();
-                closeModal();
-                showToast('Script uploaded successfully');
-                renderApp();
+                closeModal(); showToast('Script uploaded successfully'); renderApp();
+            } catch(err) {
+                project.scripts.pop(); // Revert
             }
         }
 
         function openEditScriptModal(projectId, scriptId) {
             const project = state.projects.find(p => p.id === projectId);
             const script = project.scripts.find(s => s.id === scriptId);
-
             document.getElementById('modal-container').innerHTML = `
             <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div class="bg-surface-800 border border-zinc-800/80 p-6 rounded-2xl w-full max-w-lg shadow-2xl modal-animate ring-1 ring-white/5">
-                    <div class="flex justify-between items-center mb-5">
-                        <h3 class="text-xl font-bold text-white flex items-center gap-2"><i data-lucide="edit" class="text-brand-400 w-5 h-5"></i> Edit Script</h3>
-                        <span class="px-2.5 py-1 rounded text-xs font-bold bg-brand-500/10 text-brand-400 border border-brand-500/20">${script.version}</span>
-                    </div>
+                    <div class="flex justify-between items-center mb-5"><h3 class="text-xl font-bold text-white flex items-center gap-2"><i data-lucide="edit" class="text-brand-400 w-5 h-5"></i> Edit Script</h3><span class="px-2.5 py-1 rounded text-xs font-bold bg-brand-500/10 text-brand-400 border border-brand-500/20">${script.version}</span></div>
                     <div class="space-y-4">
-                        <div>
-                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Script Name</label>
-                            <input type="text" id="input-es-name" value="${script.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Game ID</label>
-                            <input type="text" id="input-es-gameid" value="${script.gameId}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider">Reupload File <span class="text-brand-400 normal-case">(Bumps Version)</span></label>
-                            <input type="file" id="input-es-file" accept=".lua" class="w-full text-sm text-zinc-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:bg-surface-700 file:text-white hover:file:bg-surface-600 bg-[#0a0a0c] border border-zinc-700 rounded-lg outline-none cursor-pointer">
-                        </div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Script Name</label><input type="text" id="input-es-name" value="${script.name}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Game ID</label><input type="text" id="input-es-gameid" value="${script.gameId}" class="w-full bg-[#0a0a0c] border border-zinc-700 rounded-lg p-3 text-white focus:border-brand-500 outline-none font-mono"></div>
+                        <div><label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Reupload File <span class="text-brand-400 normal-case">(Bumps Version)</span></label><input type="file" id="input-es-file" accept=".lua" class="w-full text-sm text-zinc-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:bg-surface-700 file:text-white hover:file:bg-surface-600 bg-[#0a0a0c] border border-zinc-700 rounded-lg outline-none cursor-pointer"></div>
                     </div>
-                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50">
-                        <button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white rounded-lg">Cancel</button>
-                        <button onclick="saveEditScript('${projectId}', '${scriptId}')" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm">Save Changes</button>
-                    </div>
+                    <div class="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-800/50"><button onclick="closeModal()" class="px-5 py-2.5 text-sm font-medium text-zinc-400 hover:text-white rounded-lg">Cancel</button><button onclick="saveEditScript('${projectId}', '${scriptId}')" class="bg-brand-600 hover:bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm">Save Changes</button></div>
                 </div>
             </div>`;
             lucide.createIcons();
@@ -505,14 +526,16 @@
 
         async function toggleScriptStatusDirect(projectId, scriptId) {
             const project = state.projects.find(p => p.id === projectId);
-            if (!project) return;
             const script = project.scripts.find(s => s.id === scriptId);
-            if (!script) return;
             
             script.status = script.status === 'Active' ? 'Inactive' : 'Active';
-            await syncToServer();
-            renderApp();
-            showToast(`Script ${script.status === 'Active' ? 'enabled' : 'disabled'}`);
+            try {
+                await syncToServer();
+                renderApp();
+                showToast(`Script ${script.status === 'Active' ? 'enabled' : 'disabled'}`);
+            } catch (err) {
+                script.status = script.status === 'Active' ? 'Inactive' : 'Active'; // revert
+            }
         }
 
         async function saveEditScript(projectId, scriptId) {
@@ -524,8 +547,18 @@
 
             if(!newName || !newGameId) return showToast('Name and Game ID cannot be empty', 'error');
 
+            const oldState = {...script};
             script.name = newName;
             script.gameId = newGameId;
+
+            const processSave = async () => {
+                try {
+                    await syncToServer();
+                    closeModal(); showToast('Script updated successfully'); renderApp();
+                } catch (err) {
+                    Object.assign(script, oldState); // revert
+                }
+            };
 
             if(fileInput.files && fileInput.files.length > 0) {
                 const file = fileInput.files.item(0); 
@@ -533,95 +566,74 @@
                     const reader = new FileReader();
                     reader.onload = async (event) => {
                         script.version = incrementVersion(script.version);
-                        script.fileName = file.name;
-                        script.code = event.target.result;
-                        script.date = getShortDate();
-                        await syncToServer();
-                        closeModal();
-                        showToast('Script updated successfully');
-                        renderApp();
+                        script.fileName = file.name; script.code = event.target.result; script.date = getShortDate();
+                        await processSave();
                     };
                     reader.readAsText(file);
-                    return; // exit while reader works
+                    return;
                 }
             }
-
-            await syncToServer();
-            closeModal();
-            showToast('Script updated successfully');
-            renderApp();
+            await processSave();
         }
 
         async function deleteScript(projectId, scriptId) {
             const project = state.projects.find(p => p.id === projectId);
-            if(project) {
-                project.scripts = project.scripts.filter(s => s.id !== scriptId);
+            const sIndex = project.scripts.findIndex(s => s.id === scriptId);
+            const sStore = project.scripts[sIndex];
+            project.scripts.splice(sIndex, 1);
+            
+            try {
                 await syncToServer();
-                showToast('Script deleted successfully');
-                renderApp();
+                showToast('Script deleted'); renderApp();
+            } catch (err) {
+                project.scripts.splice(sIndex, 0, sStore); // revert
             }
         }
 
         function openCustomLoaderModal(projectId) {
             const project = state.projects.find(p => p.id === projectId);
-            const currentCode = project.loaderCode || "";
             document.getElementById('modal-container').innerHTML = `
             <div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div class="bg-[#111113] border border-zinc-800/80 p-0 rounded-2xl w-full max-w-3xl shadow-2xl modal-animate overflow-hidden">
                     <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-800/80 bg-surface-900/50">
                         <h3 class="text-sm font-bold text-white flex items-center gap-2"><i data-lucide="code" class="text-zinc-400 w-4 h-4"></i> Loader Code (Lua)</h3>
                         <div class="flex items-center gap-2">
-                            <button onclick="copyLoaderLink('${projectId}')" class="px-3 py-1.5 text-xs text-zinc-300 hover:text-white bg-surface-800 rounded-md border border-zinc-700/50">Copy Loader URL</button>
+                            <button onclick="copyLoaderLink('${projectId}')" class="px-3 py-1.5 text-xs text-zinc-300 hover:text-white bg-surface-800 rounded-md border border-zinc-700/50">Copy URL</button>
                             <button onclick="autoGenerateLoader('${projectId}')" class="px-3 py-1.5 text-xs text-brand-400 bg-brand-500/10 rounded-md border border-brand-500/20">Auto Generate</button>
                             <button onclick="saveLoaderCode('${projectId}')" class="px-3 py-1.5 text-xs text-white bg-brand-600 rounded-md shadow-lg shadow-brand-500/20">Save</button>
                             <button onclick="closeModal()" class="p-1.5 text-zinc-500 hover:text-white rounded-md ml-2"><i data-lucide="x" class="w-4 h-4"></i></button>
                         </div>
                     </div>
-                    <div class="p-4 bg-[#0a0a0c]"><textarea id="loader-code-textarea">${currentCode}</textarea></div>
+                    <div class="p-4 bg-[#0a0a0c]"><textarea id="loader-code-textarea">${project.loaderCode || ""}</textarea></div>
                 </div>
             </div>`;
             lucide.createIcons();
-
-            setTimeout(() => {
-                window.loaderEditor = CodeMirror.fromTextArea(document.getElementById('loader-code-textarea'), {
-                    mode: 'lua', theme: 'sanctuary', lineNumbers: false, matchBrackets: true, indentUnit: 4
-                });
-            }, 10);
+            setTimeout(() => { window.loaderEditor = CodeMirror.fromTextArea(document.getElementById('loader-code-textarea'), { mode: 'lua', theme: 'sanctuary', lineNumbers: false, matchBrackets: true, indentUnit: 4 }); }, 10);
         }
 
         function autoGenerateLoader(projectId) {
             if (window.loaderEditor) {
                 const project = state.projects.find(p => p.id === projectId);
-                let scriptsTable = "";
-                
-                // Smart generator: Automatically grabs the URLs of active scripts and adds them to the Lua table!
-                if (project && project.scripts) {
-                    project.scripts.forEach(s => {
-                        scriptsTable += `    [${s.gameId}] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`;
-                    });
-                }
-                
+                let scriptsTable = project.scripts.map(s => `    [${s.gameId}] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`).join('');
                 window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\n\nlocal Script = Scripts[game.GameId]\nif Script then\n    loadstring(game:HttpGet(Script))()\nelse\n    -- For the user to decide\nend`);
-                showToast('Auto-generated loader template');
             }
         }
 
-        function copyLoaderLink(projectId) {
-            copyToClipboard(`loadstring(game:HttpGet('${window.location.origin}/loader/${projectId}'))()`, 'Custom Loader URL copied!');
-        }
+        function copyLoaderLink(projectId) { copyToClipboard(`loadstring(game:HttpGet('${window.location.origin}/loader/${projectId}'))()`, 'Custom Loader URL copied!'); }
 
         async function saveLoaderCode(projectId) {
             const project = state.projects.find(p => p.id === projectId);
-            if (project && window.loaderEditor) {
-                project.loaderCode = window.loaderEditor.getValue();
+            const oldVal = project.loaderCode;
+            project.loaderCode = window.loaderEditor.getValue();
+            try {
                 await syncToServer();
-                closeModal();
-                showToast('Loader code saved successfully');
+                closeModal(); showToast('Loader code saved');
+            } catch (err) {
+                project.loaderCode = oldVal;
             }
         }
 
-        // Initialize App by loading data from your Railway Backend!
-        loadFromServer();
+        initApp();
     </script>
 </body>
 </html>
