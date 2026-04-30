@@ -1000,7 +1000,7 @@
                         else { scriptsTable += `    ["Universal"] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`; }
                     });
                 }
-                let authSnippet = project.freeMode === false ? `\nlocal AuthKey = getgenv().LuauAuthKey or ""\nlocal hwid = (gethwid and gethwid()) or game:GetService("RbxAnalyticsService"):GetClientId()\n` : "";
+                let authSnippet = project.freeMode === false ? `\nlocal AuthKey = getgenv().script_key or ""\nlocal hwid = (gethwid and gethwid()) or game:GetService("RbxAnalyticsService"):GetClientId()\n` : "";
                 let callSnippet = project.freeMode === false ? `loadstring(game:HttpGet(Script .. "?key=" .. AuthKey .. "&hwid=" .. hwid))()` : `loadstring(game:HttpGet(Script))()`;
                 window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\n\nlocal Script = Scripts[game.GameId] or Scripts["Universal"]\nif Script then${authSnippet}\n    ${callSnippet}\nelse\n    warn("Luau-Auth: No script found")\nend`);
             }
