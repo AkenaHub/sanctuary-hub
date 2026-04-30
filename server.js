@@ -158,6 +158,9 @@ app.get('/api/sync', (req, res) => {
     
     db.projects.forEach(p => {
         if (!p.ownerId) { p.ownerId = discordId; needsSave = true; }
+        if (p.freeMode === undefined) { p.freeMode = true; needsSave = true; }
+        if (p.hwidResetCooldown === undefined) { p.hwidResetCooldown = 24; needsSave = true; }
+        if (!p.hwidKeys) { p.hwidKeys = []; needsSave = true; }
     });
     if (needsSave) writeDB(db);
 
@@ -169,27 +172,15 @@ app.post('/api/sync', requireValidAccess, (req, res) => {
     const incomingProjects = req.body.projects;
     const discordId = req.body.discordId;
     const isAdmin = ADMIN_IDS.includes(discordId);
-    const existingProjectsMap = new Map(db.projects.map(p => [p.id, p]));
 
-    incomingProjects.forEach(incomingProj => {
-        if (!incomingProj.ownerId) incomingProj.ownerId = discordId;
-        const existing = existingProjectsMap.get(incomingProj.id);
-
-        if (existing) {
-            if (isAdmin || existing.ownerId === discordId) {
-                existingProjectsMap.set(incomingProj.id, incomingProj);
-            }
-        } else {
-            existingProjectsMap.set(incomingProj.id, incomingProj);
-        }
-    });
-
-    const incomingIds = new Set(incomingProjects.map(p => p.id));
-    db.projects = Array.from(existingProjectsMap.values()).filter(p => {
-        if (isAdmin) return incomingIds.has(p.id);
-        if (p.ownerId === discordId) return incomingIds.has(p.id);
-        return true;
-    });
+    if (isAdmin) {
+        db.projects = incomingProjects;
+    } else {
+        const otherUsersProjects = db.projects.filter(p => p.ownerId !== discordId);
+        const userProjectsToSave = incomingProjects.filter(p => p.ownerId === discordId || !p.ownerId);
+        userProjectsToSave.forEach(p => p.ownerId = discordId);
+        db.projects = [...otherUsersProjects, ...userProjectsToSave];
+    }
 
     writeDB(db);
     res.json({ success: true });
@@ -197,6 +188,8 @@ app.post('/api/sync', requireValidAccess, (req, res) => {
 
 app.get('/raw/:projectId/:scriptId', (req, res) => {
     const { projectId, scriptId } = req.params;
+    const { key, hwid } = req.query;
+    
     const acceptHeader = req.headers['accept'] || "";
     if (acceptHeader.includes("text/html")) {
         res.type('text/plain');
@@ -210,20 +203,34 @@ app.get('/raw/:projectId/:scriptId', (req, res) => {
         const script = project.scripts.find(s => s.id === scriptId);
         if (script) {
             res.type('text/plain');
+            
             if (script.status !== 'Active') {
                 return res.send(`print("This script is no longer working. ID: ${scriptId}")`);
+            }
+
+            if (project.freeMode === false) {
+                if (!key) return res.send(`print("No Script Key provided. ID: ${scriptId}")`);
+                const hwidKey = (project.hwidKeys || []).find(k => k.key === key);
+                if (!hwidKey || hwidKey.expiresAt < Date.now()) {
+                    return res.send(`print("Invalid or expired HWID key. ID: ${scriptId}")`);
+                }
+                if (!hwidKey.hwid) {
+                    hwidKey.hwid = hwid || "UNKNOWN";
+                    writeDB(db);
+                } else if (hwidKey.hwid !== hwid && hwid) {
+                    return res.send(`print("Invalid HWID. Key is locked to another device. ID: ${scriptId}")`);
+                }
             }
             
             script.executions = (script.executions || 0) + 1;
             if (!script.executionHistory) script.executionHistory = {};
-            const today = new Date().toISOString().split('T');
+            const today = new Date().toISOString().split('T').shift();
             script.executionHistory[today] = (script.executionHistory[today] || 0) + 1;
             writeDB(db);
 
             let finalLuaCode = "";
             if (project.webhookUrl && project.webhookUrl.trim() !== "") {
-                finalLuaCode += `-- Luau-Auth Execution Logger
-pcall(function()
+                finalLuaCode += `pcall(function()
     local request = http_request or syn and syn.request or request
     if not request then return end
     local HttpService = game:GetService("HttpService")
@@ -253,7 +260,7 @@ pcall(function()
     request({ Url = "${project.webhookUrl}", Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = HttpService:JSONEncode(payload) })
 end)\n\n`;
             }
-            return res.send(finalLuaCode + (script.code || '-- Empty'));
+            return res.send(finalLuaCode + (script.code || 'print("Empty script")'));
         }
     }
     res.status(404).send('-- Error: Script or Project not found');
