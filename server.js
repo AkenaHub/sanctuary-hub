@@ -12,6 +12,8 @@ app.use(express.static(__dirname));
 
 const dbPath = path.join(__dirname, 'database.json');
 const ADMIN_IDS = ["1284247278957367337", "1282859051092414586"];
+
+// Added your live Discord credentials
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || "1499199968135876608";
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || "C7RerB6dlNqd9qMRywajtGiygfLCSfZw";
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || "MTQ5OTE5OTk2ODEzNTg3NjYwOA.GcLr_S.lbST-GCnId85H1Mntb1C0RUz1cfN6CT2lR7C24";
@@ -271,6 +273,7 @@ app.get('/loader/:projectId', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {});
 
+// --- Discord Bot Configuration ---
 const commands = [
     new SlashCommandBuilder().setName('setuppanel').setDescription('Setup Luau-Auth Panel').addStringOption(opt => opt.setName('project_id').setDescription('The ID of the project').setRequired(true)).addRoleOption(opt => opt.setName('role').setDescription('Role to give on redeem').setRequired(true)),
     new SlashCommandBuilder().setName('reset_hwid').setDescription('Admin HWID Reset').addStringOption(opt => opt.setName('key').setDescription('The HWID Key').setRequired(true)),
@@ -279,6 +282,7 @@ const commands = [
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
+    console.log(`Luau-Auth Bot is online as ${client.user.tag}`);
     const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
@@ -347,9 +351,12 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isButton()) {
         const parts = interaction.customId.split('_');
-        if (parts !== 'auth') return;
-        const action = parts;
-        const projectId = parts;
+        const prefix = parts.shift();
+        if (prefix !== 'auth') return;
+        
+        const action = parts.shift();
+        const projectId = parts.join('_');
+        
         const db = readDB();
         const project = db.projects.find(p => p.id === projectId);
         if (!project) return interaction.reply({ content: "Project no longer exists.", ephemeral: true });
@@ -390,9 +397,13 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isModalSubmit()) {
         const parts = interaction.customId.split('_');
-        if (parts !== 'modal' || parts !== 'redeem') return;
-        const projectId = parts;
+        const prefix = parts.shift();
+        const action = parts.shift();
+        
+        if (prefix !== 'modal' || action !== 'redeem') return;
+        const projectId = parts.join('_');
         const inputKey = interaction.fields.getTextInputValue('keyInput').trim();
+        
         const db = readDB();
         const project = db.projects.find(p => p.id === projectId);
         if (!project) return interaction.reply({ content: "Project no longer exists.", ephemeral: true });
@@ -420,4 +431,4 @@ client.on('interactionCreate', async interaction => {
 
 if (DISCORD_BOT_TOKEN) {
     client.login(DISCORD_BOT_TOKEN).catch(console.error);
-}
+                    }
