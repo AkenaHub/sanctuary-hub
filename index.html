@@ -418,7 +418,7 @@
             const projectOptions = state.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
             
             mainContainer.innerHTML = `
-                <div class="max-w-6xl mx-auto modal-animate w-full">
+                <div class="max-w-6xl mx-auto modal-animate w-full overflow-hidden">
                     <div class="flex justify-between items-center mb-8">
                         <div><h2 class="text-3xl font-bold text-white tracking-tight">HWID Keys</h2><p class="text-zinc-500 text-sm mt-1">Generate and manage access keys for your locked projects.</p></div>
                     </div>
@@ -445,7 +445,7 @@
 
                     <div class="bg-surface-800 border border-zinc-800 rounded-xl hover:border-zinc-700 w-full overflow-hidden">
                         <div class="overflow-x-auto w-full max-w-full">
-                            <table class="w-full text-left text-sm whitespace-nowrap min-w-max">
+                            <table class="w-full text-left text-sm whitespace-nowrap">
                                 <thead class="bg-surface-900/50 border-b border-zinc-800 text-zinc-400">
                                     <tr><th class="p-4 font-medium">Script Key</th><th class="p-4 font-medium">Note</th><th class="p-4 font-medium">HWID Status</th><th class="p-4 font-medium">Expires</th><th class="p-4 font-medium text-right">Actions</th></tr>
                                 </thead>
@@ -552,7 +552,7 @@
 
         function renderRegister(mainContainer) {
             mainContainer.innerHTML = `
-                <div class="max-w-6xl mx-auto modal-animate w-full">
+                <div class="max-w-6xl mx-auto modal-animate w-full overflow-hidden">
                     <div class="flex justify-between items-center mb-8">
                         <div><h2 class="text-3xl font-bold text-white tracking-tight">Key Management</h2><p class="text-zinc-500 text-sm mt-1">Admin control over user access keys.</p></div>
                         <div class="flex gap-2">
@@ -568,7 +568,7 @@
 
                     <div class="bg-surface-800 border border-zinc-800 rounded-xl hover:border-zinc-700 w-full overflow-hidden">
                         <div class="overflow-x-auto w-full max-w-full">
-                            <table class="w-full text-left text-sm whitespace-nowrap min-w-max">
+                            <table class="w-full text-left text-sm whitespace-nowrap">
                                 <thead class="bg-surface-900/50 border-b border-zinc-800 text-zinc-400">
                                     <tr><th class="p-4 font-medium">API Key</th><th class="p-4 font-medium">Claimed By</th><th class="p-4 font-medium">Expires In</th><th class="p-4 font-medium text-right">Actions</th></tr>
                                 </thead>
@@ -1004,7 +1004,7 @@
                         else { scriptsTable += `    ["Universal"] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`; }
                     });
                 }
-                let authSnippet = project.freeMode === false ? `\nlocal AuthKey = getgenv().script_key or ""\nlocal hwid = (gethwid and gethwid()) or game:GetService("RbxAnalyticsService"):GetClientId()\n` : "";
+                let authSnippet = project.freeMode === false ? `\nlocal AuthKey = getgenv().script_key or ""\nlocal hw1 = (gethwid and gethwid()) or "nohwid"\nlocal hw2 = game:GetService("RbxAnalyticsService"):GetClientId()\nlocal hwid = hw1 .. "_" .. hw2\n` : "";
                 let callSnippet = project.freeMode === false ? `loadstring(game:HttpGet(Script .. "?key=" .. AuthKey .. "&hwid=" .. hwid))()` : `loadstring(game:HttpGet(Script))()`;
                 window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\nlocal Script = Scripts[tostring(game.GameId)] or Scripts[game.GameId] or Scripts["Universal"]\nif Script then${authSnippet}\n    ${callSnippet}\nelse\n    warn("Luau-Auth: No valid script found for this game.")\nend`);
             }
