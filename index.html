@@ -885,14 +885,32 @@
                     <div class="space-y-5 relative z-10">
                         <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Custom Script Name</label><input type="text" id="input-as-name" class="w-full glass-input rounded-xl p-4 text-white focus:border-brand-500 outline-none shadow-inner"></div>
                         <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Roblox Game ID</label><input type="text" id="input-as-gameid" class="w-full glass-input rounded-xl p-4 text-white focus:border-brand-500 outline-none font-mono shadow-inner" placeholder="Leave empty for Universal Script"></div>
+                        <div class="flex items-center justify-between bg-black/40 p-4 rounded-xl border border-white/10 shadow-inner">
+                            <div><p class="text-sm font-bold text-white tracking-wide">Allow Solara/Xeno</p><p class="text-xs text-zinc-500 mt-0.5">Let these executors run the script</p></div>
+                            <button id="toggle-solaraxeno-add" onclick="toggleSolaraXenoAdd()" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] border-white/10 bg-black/60 shadow-inner"><span id="toggle-solaraxeno-add-thumb" class="pointer-events-none absolute left-[2px] inline-block h-4 w-4 transform rounded-full transition-all duration-300 translate-x-0 bg-zinc-500"></span></button>
+                        </div>
                         <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Upload File</label>
                             <div id="drop-zone" class="border-2 border-dashed border-white/20 rounded-2xl p-10 text-center bg-black/40 hover:bg-white/5 hover:border-brand-500/50 cursor-pointer relative transition-all shadow-inner"><input type="file" accept=".lua" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)"><div class="bg-white/10 border border-white/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg"><i data-lucide="upload-cloud" class="w-7 h-7 text-brand-400"></i></div><p class="text-sm text-zinc-300 font-bold tracking-wide" id="drop-text">Drag & drop your file here</p></div>
                         </div>
                     </div>
-                    <div class="flex justify-end gap-3 mt-8 pt-6 border-t border-white/10 relative z-10"><button onclick="closeModal()" class="px-6 py-3 text-sm font-bold text-zinc-300 hover:text-white glass-btn rounded-xl">Cancel</button><button onclick="submitAddScript()" class="bg-brand-600/90 hover:bg-brand-500 border border-brand-500/50 text-white px-8 py-3 rounded-xl text-sm font-bold shadow-[0_0_20px_rgba(79,70,229,0.4)] hover:-translate-y-1">Upload</button></div>
+                    <div class="flex justify-end gap-3 mt-8 pt-6 border-t border-white/10 relative z-10"><button onclick="closeModal()" class="px-6 py-3 text-sm font-bold text-zinc-300 hover:text-white glass-btn rounded-xl">Cancel</button><button onclick="submitAddScript()" class="bg-brand-600/90 hover:bg-brand-500 border border-brand-500/50 backdrop-blur-md text-white px-8 py-3 rounded-xl text-sm font-bold shadow-[0_0_20px_rgba(79,70,229,0.4)] hover:-translate-y-1">Upload</button></div>
                 </div>
             </div>`;
+            window.tempAllowSolaraAdd = false;
             lucide.createIcons(); setupDragDrop();
+        }
+
+        function toggleSolaraXenoAdd() {
+            window.tempAllowSolaraAdd = !window.tempAllowSolaraAdd;
+            const btn = document.getElementById('toggle-solaraxeno-add');
+            const thumb = document.getElementById('toggle-solaraxeno-add-thumb');
+            if(window.tempAllowSolaraAdd) {
+                btn.className = "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] border-[#272a54] bg-black/80 shadow-inner";
+                thumb.className = "pointer-events-none absolute left-[2px] inline-block h-4 w-4 transform rounded-full transition-all duration-300 translate-x-[20px] bg-[#515dfa] shadow-[0_0_10px_#515dfa]";
+            } else {
+                btn.className = "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] border-white/10 bg-black/60 shadow-inner";
+                thumb.className = "pointer-events-none absolute left-[2px] inline-block h-4 w-4 transform rounded-full transition-all duration-300 translate-x-0 bg-zinc-500";
+            }
         }
 
         function handleFileSelect(e) { handleFiles(e.target.files); }
@@ -927,7 +945,7 @@
             if (typeof luaparse !== 'undefined') {
                 try { luaparse.parse(code, { comments: false }); } 
                 catch (err) {
-                    const proceed = confirm(`Syntax Error:\\n\\n${err.message}\\n\\nUpload anyway?`);
+                    const proceed = confirm(`Syntax Error:\n\n${err.message}\n\nUpload anyway?`);
                     if (!proceed) return;
                 }
             }
@@ -935,7 +953,7 @@
             const project = state.projects.find(p => p.id === projectId);
             const scriptId = await generateSHA256(name + gameId + "script");
             
-            const newScript = { id: scriptId, name, gameId, status: 'Active', version: 'v0.0.1', date: getShortDate(), fileName: file.name, code, executions: 0, executionHistory: {} };
+            const newScript = { id: scriptId, name, gameId, status: 'Active', version: 'v0.0.1', date: getShortDate(), fileName: file.name, code, executions: 0, executionHistory: {}, allowSolaraXeno: window.tempAllowSolaraAdd };
             project.scripts.push(newScript);
             
             try { await syncToServer(); closeModal(); showToast('Script uploaded'); renderApp(); } 
@@ -945,6 +963,7 @@
         function openEditScriptModal(projectId, scriptId) {
             const project = state.projects.find(p => p.id === projectId);
             const script = project.scripts.find(s => s.id === scriptId);
+            window.tempAllowSolaraEdit = script.allowSolaraXeno === true;
             document.getElementById('modal-container').innerHTML = `
             <div class="fixed inset-0 bg-black/60 backdrop-blur-lg flex items-center justify-center z-50 p-4">
                 <div class="glass-card p-8 rounded-[2rem] w-full max-w-lg shadow-2xl modal-animate relative overflow-hidden">
@@ -953,12 +972,29 @@
                     <div class="space-y-5 relative z-10">
                         <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Script Name</label><input type="text" id="input-es-name" value="${script.name}" class="w-full glass-input rounded-xl p-4 text-white focus:border-brand-500 outline-none shadow-inner"></div>
                         <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Game ID</label><input type="text" id="input-es-gameid" value="${script.gameId || ''}" placeholder="Leave empty for Universal Script" class="w-full glass-input rounded-xl p-4 text-white focus:border-brand-500 outline-none font-mono shadow-inner"></div>
+                        <div class="flex items-center justify-between bg-black/40 p-4 rounded-xl border border-white/10 shadow-inner">
+                            <div><p class="text-sm font-bold text-white tracking-wide">Allow Solara/Xeno</p><p class="text-xs text-zinc-500 mt-0.5">Let these executors run the script</p></div>
+                            <button id="toggle-solaraxeno-edit" onclick="toggleSolaraXenoEdit()" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] ${script.allowSolaraXeno ? 'border-[#272a54] bg-black/80' : 'border-white/10 bg-black/60'} shadow-inner"><span id="toggle-solaraxeno-edit-thumb" class="pointer-events-none absolute left-[2px] inline-block h-4 w-4 transform rounded-full transition-all duration-300 ${script.allowSolaraXeno ? 'translate-x-[20px] bg-[#515dfa] shadow-[0_0_10px_#515dfa]' : 'translate-x-0 bg-zinc-500'}"></span></button>
+                        </div>
                         <div><label class="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">Reupload File <span class="text-brand-400 normal-case">(Bumps Version)</span></label><input type="file" id="input-es-file" accept=".lua" class="w-full text-sm text-zinc-300 file:mr-5 file:py-3 file:px-6 file:rounded-xl file:border-0 file:bg-white/10 file:text-white file:font-bold hover:file:bg-white/20 glass-input rounded-xl outline-none cursor-pointer shadow-inner"></div>
                     </div>
                     <div class="flex justify-end gap-3 mt-8 pt-6 border-t border-white/10 relative z-10"><button onclick="closeModal()" class="px-6 py-3 text-sm font-bold text-zinc-300 hover:text-white glass-btn rounded-xl">Cancel</button><button onclick="saveEditScript('${projectId}', '${scriptId}')" class="bg-brand-600/90 hover:bg-brand-500 border border-brand-500/50 text-white px-8 py-3 rounded-xl text-sm font-bold shadow-[0_0_20px_rgba(79,70,229,0.4)] hover:-translate-y-1">Save</button></div>
                 </div>
             </div>`;
             lucide.createIcons();
+        }
+
+        function toggleSolaraXenoEdit() {
+            window.tempAllowSolaraEdit = !window.tempAllowSolaraEdit;
+            const btn = document.getElementById('toggle-solaraxeno-edit');
+            const thumb = document.getElementById('toggle-solaraxeno-edit-thumb');
+            if(window.tempAllowSolaraEdit) {
+                btn.className = "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] border-[#272a54] bg-black/80 shadow-inner";
+                thumb.className = "pointer-events-none absolute left-[2px] inline-block h-4 w-4 transform rounded-full transition-all duration-300 translate-x-[20px] bg-[#515dfa] shadow-[0_0_10px_#515dfa]";
+            } else {
+                btn.className = "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] border-white/10 bg-black/60 shadow-inner";
+                thumb.className = "pointer-events-none absolute left-[2px] inline-block h-4 w-4 transform rounded-full transition-all duration-300 translate-x-0 bg-zinc-500";
+            }
         }
 
         async function saveEditScript(projectId, scriptId) {
@@ -971,13 +1007,13 @@
             if(!newName) return showToast('Script name cannot be empty', 'error');
 
             const oldState = {...script};
-            script.name = newName; script.gameId = newGameId;
+            script.name = newName; script.gameId = newGameId; script.allowSolaraXeno = window.tempAllowSolaraEdit;
 
             const processSave = async (codeToCheck) => {
                 if (codeToCheck && typeof luaparse !== 'undefined') {
                     try { luaparse.parse(codeToCheck, { comments: false }); } 
                     catch (err) {
-                        const proceed = confirm(`Syntax Error:\\n\\n${err.message}\\n\\nSave anyway?`);
+                        const proceed = confirm(`Syntax Error:\n\n${err.message}\n\nSave anyway?`);
                         if (!proceed) { Object.assign(script, oldState); return; }
                     }
                 }
