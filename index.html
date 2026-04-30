@@ -443,14 +443,16 @@
                         </div>
                     </div>
 
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl overflow-x-auto hover:border-zinc-700 w-full block">
-                        <table class="w-full text-left text-sm whitespace-nowrap">
-                            <thead class="bg-surface-900/50 border-b border-zinc-800 text-zinc-400">
-                                <tr><th class="p-4 font-medium">Script Key</th><th class="p-4 font-medium">Note</th><th class="p-4 font-medium">HWID Status</th><th class="p-4 font-medium">Expires</th><th class="p-4 font-medium text-right">Actions</th></tr>
-                            </thead>
-                            <tbody id="hwid-table-body" class="divide-y divide-zinc-800/50">
-                            </tbody>
-                        </table>
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl hover:border-zinc-700 w-full overflow-hidden">
+                        <div class="overflow-x-auto w-full max-w-full">
+                            <table class="w-full text-left text-sm whitespace-nowrap min-w-[800px]">
+                                <thead class="bg-surface-900/50 border-b border-zinc-800 text-zinc-400">
+                                    <tr><th class="p-4 font-medium">Script Key</th><th class="p-4 font-medium">Note</th><th class="p-4 font-medium">HWID Status</th><th class="p-4 font-medium">Expires</th><th class="p-4 font-medium text-right">Actions</th></tr>
+                                </thead>
+                                <tbody id="hwid-table-body" class="divide-y divide-zinc-800/50">
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             `;
@@ -564,15 +566,17 @@
                         <button onclick="copyToClipboard(document.getElementById('admin-new-key').innerText, 'Key Copied!')" class="bg-surface-800 hover:bg-surface-700 text-white px-4 py-2 rounded-lg text-sm font-medium border border-zinc-700/50">Copy</button>
                     </div>
 
-                    <div class="bg-surface-800 border border-zinc-800 rounded-xl overflow-x-auto hover:border-zinc-700 w-full block">
-                        <table class="w-full text-left text-sm whitespace-nowrap min-w-max">
-                            <thead class="bg-surface-900/50 border-b border-zinc-800 text-zinc-400">
-                                <tr><th class="p-4 font-medium">API Key</th><th class="p-4 font-medium">Claimed By</th><th class="p-4 font-medium">Expires In</th><th class="p-4 font-medium text-right">Actions</th></tr>
-                            </thead>
-                            <tbody id="keys-table-body" class="divide-y divide-zinc-800/50">
-                                <tr><td colspan="4" class="p-8 text-center text-zinc-500">Loading keys...</td></tr>
-                            </tbody>
-                        </table>
+                    <div class="bg-surface-800 border border-zinc-800 rounded-xl hover:border-zinc-700 w-full overflow-hidden">
+                        <div class="overflow-x-auto w-full max-w-full">
+                            <table class="w-full text-left text-sm whitespace-nowrap min-w-[800px]">
+                                <thead class="bg-surface-900/50 border-b border-zinc-800 text-zinc-400">
+                                    <tr><th class="p-4 font-medium">API Key</th><th class="p-4 font-medium">Claimed By</th><th class="p-4 font-medium">Expires In</th><th class="p-4 font-medium text-right">Actions</th></tr>
+                                </thead>
+                                <tbody id="keys-table-body" class="divide-y divide-zinc-800/50">
+                                    <tr><td colspan="4" class="p-8 text-center text-zinc-500">Loading keys...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             `;
