@@ -16,7 +16,7 @@ const ADMIN_IDS = ["1284247278957367337", "1282859051092414586"];
 
 // These should be set in your Railway Environment Variables
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || "1499199968135876608";
-const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || "zAoxnpFlqfOgbN1fT8ZloyQgE9j6UzjG";
+const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || "zAoxnpFlqfOgbN1fT8ZloyQgE9j6UzjG"; 
 const REDIRECT_URI = process.env.REDIRECT_URI || "https://sanctuary-hub-production.up.railway.app/api/auth/callback";
 
 // --- Database Helpers ---
@@ -45,12 +45,7 @@ const writeDB = (data) => {
 // --- Middleware: API Key Validation ---
 const requireValidAccess = (req, res, next) => {
     const { apiKey, discordId } = req.body;
-    
-    // Admins bypass API key requirements
-    if (ADMIN_IDS.includes(discordId)) {
-        return next();
-    }
-
+    if (ADMIN_IDS.includes(discordId)) return next();
     if (!apiKey) return res.status(401).json({ error: "API Key required to edit/upload." });
 
     const db = readDB();
@@ -64,7 +59,6 @@ const requireValidAccess = (req, res, next) => {
 
 // --- Discord OAuth2 Endpoints ---
 app.get('/api/auth/discord', (req, res) => {
-    // FIXED: The authorization URL is 'discord.com/oauth2/authorize', not 'discord.com/api/oauth2/authorize'
     const url = `https://discord.com/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify`;
     res.redirect(url);
 });
@@ -74,7 +68,6 @@ app.get('/api/auth/callback', async (req, res) => {
     if (!code) return res.send("No code provided.");
 
     try {
-        // Exchange code for token
         const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
             method: 'POST',
             body: new URLSearchParams({
@@ -88,14 +81,11 @@ app.get('/api/auth/callback', async (req, res) => {
         });
 
         const tokenData = await tokenResponse.json();
-        
-        // Fetch User Info
         const userResponse = await fetch('https://discord.com/api/users/@me', {
             headers: { authorization: `Bearer ${tokenData.access_token}` }
         });
         const userData = await userResponse.json();
 
-        // Send a simple script to save the user data in localStorage and redirect to dashboard
         res.send(`
             <script>
                 localStorage.setItem('sanctuary_user', JSON.stringify({
@@ -111,28 +101,77 @@ app.get('/api/auth/callback', async (req, res) => {
     }
 });
 
-// --- Admin Endpoints ---
-app.post('/api/admin/generate-key', (req, res) => {
-    const { discordId, days } = req.body;
-    if (!ADMIN_IDS.includes(discordId)) return res.status(403).json({ error: "Unauthorized." });
-
+// --- API Key Linking Endpoint ---
+app.post('/api/link-key', (req, res) => {
+    const { apiKey, discordId, discordName } = req.body;
     const db = readDB();
-    const newKey = "SNC-" + crypto.randomBytes(8).toString('hex').toUpperCase();
+    
+    if (!db.apiKeys[apiKey]) return res.status(400).json({ error: "Invalid API Key" });
+    
+    // Link user details to the key for Admin visibility
+    db.apiKeys[apiKey].userId = discordId;
+    db.apiKeys[apiKey].username = discordName;
+    writeDB(db);
+    
+    res.json({ success: true, expiresAt: db.apiKeys[apiKey].expiresAt });
+});
+
+app.post('/api/check-key', (req, res) => {
+    const { apiKey } = req.body;
+    const db = readDB();
+    const keyData = db.apiKeys[apiKey];
+    if (!keyData) return res.json({ valid: false });
+    res.json({ valid: true, expiresAt: keyData.expiresAt });
+});
+
+// --- Admin Endpoints ---
+const requireAdmin = (req, res, next) => {
+    if (!ADMIN_IDS.includes(req.body.discordId)) return res.status(403).json({ error: "Unauthorized." });
+    next();
+};
+
+app.post('/api/admin/keys', requireAdmin, (req, res) => {
+    const db = readDB();
+    res.json({ keys: db.apiKeys });
+});
+
+app.post('/api/admin/generate-key', requireAdmin, (req, res) => {
+    const { days } = req.body;
+    const db = readDB();
+    // Lowercase hex string without SNC-
+    const newKey = crypto.randomBytes(8).toString('hex').toLowerCase();
     const expiresAt = Date.now() + (parseInt(days) * 24 * 60 * 60 * 1000);
 
-    db.apiKeys[newKey] = { createdAt: Date.now(), expiresAt };
+    db.apiKeys[newKey] = { createdAt: Date.now(), expiresAt, userId: null, username: null };
     writeDB(db);
-
     res.json({ key: newKey, expiresAt });
+});
+
+app.post('/api/admin/extend-key', requireAdmin, (req, res) => {
+    const { targetKey, days } = req.body;
+    const db = readDB();
+    if (!db.apiKeys[targetKey]) return res.status(404).json({ error: "Key not found." });
+    
+    db.apiKeys[targetKey].expiresAt += (parseInt(days) * 24 * 60 * 60 * 1000);
+    writeDB(db);
+    res.json({ success: true });
+});
+
+app.post('/api/admin/revoke-key', requireAdmin, (req, res) => {
+    const { targetKey } = req.body;
+    const db = readDB();
+    if (db.apiKeys[targetKey]) {
+        delete db.apiKeys[targetKey];
+        writeDB(db);
+    }
+    res.json({ success: true });
 });
 
 // --- Frontend Sync Endpoints ---
 app.get('/api/sync', (req, res) => {
-    const db = readDB();
-    res.json({ projects: db.projects });
+    res.json({ projects: readDB().projects });
 });
 
-// Sync data (Requires API Key or Admin)
 app.post('/api/sync', requireValidAccess, (req, res) => {
     const db = readDB();
     db.projects = req.body.projects;
@@ -140,21 +179,10 @@ app.post('/api/sync', requireValidAccess, (req, res) => {
     res.json({ success: true });
 });
 
-// Check API Key Status Endpoint
-app.post('/api/check-key', (req, res) => {
-    const { apiKey } = req.body;
-    const db = readDB();
-    const keyData = db.apiKeys[apiKey];
-    
-    if (!keyData) return res.json({ valid: false });
-    res.json({ valid: true, expiresAt: keyData.expiresAt });
-});
-
-// --- RAW SCRIPT URL ENDPOINT ---
+// --- RAW SCRIPT URL ENDPOINT (WITH EXECUTIONS & WEBHOOKS) ---
 app.get('/raw/:projectId/:scriptId', (req, res) => {
     const { projectId, scriptId } = req.params;
     
-    // ANTI-SNOOP: Check if request is from a regular web browser
     const userAgent = req.headers['user-agent'] || "";
     const isBrowser = userAgent.includes("Mozilla") || userAgent.includes("Chrome") || userAgent.includes("Safari");
 
@@ -171,12 +199,38 @@ app.get('/raw/:projectId/:scriptId', (req, res) => {
         if (script) {
             res.type('text/plain');
             
-            // KILL SWITCH: If script is inactive, return the print statement
             if (script.status !== 'Active') {
                 return res.send(`print("This script is no longer working. ID: ${scriptId}")`);
             }
             
-            // Otherwise, send real code
+            // Increment Executions
+            script.executions = (script.executions || 0) + 1;
+            writeDB(db);
+
+            // Trigger Discord Webhook Alert
+            if (project.webhookUrl) {
+                const executor = userAgent.substring(0, 60) || "Unknown Executor";
+                try {
+                    fetch(project.webhookUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            embeds: [{
+                                title: "🚀 Script Executed",
+                                color: 0x4f46e5,
+                                fields: [
+                                    { name: "Project", value: project.name, inline: true },
+                                    { name: "Script", value: script.name, inline: true },
+                                    { name: "Executor", value: executor, inline: true },
+                                    { name: "Total Executions", value: script.executions.toString(), inline: true }
+                                ],
+                                timestamp: new Date().toISOString()
+                            }]
+                        })
+                    }).catch(()=>{}); // Ignore failures to not block script
+                } catch(e) {}
+            }
+
             return res.send(script.code || '-- Error: Uploaded script file was completely empty.');
         }
     }
@@ -188,13 +242,12 @@ app.get('/raw/:projectId/:scriptId', (req, res) => {
 app.get('/loader/:projectId', (req, res) => {
     const { projectId } = req.params;
     const db = readDB();
-    
     const project = db.projects.find(p => p.id === projectId);
+    
     if (project) {
         res.type('text/plain');
         return res.send(project.loaderCode || '-- Error: Custom Loader code is completely empty.');
     }
-    
     res.status(404).send('-- Error: Project not found.');
 });
 
