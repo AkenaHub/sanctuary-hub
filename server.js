@@ -121,7 +121,7 @@ app.post('/api/admin/keys', requireAdmin, (req, res) => {
 
 app.post('/api/admin/generate-key', requireAdmin, (req, res) => {
     const db = readDB();
-    const newKey = crypto.randomBytes(8).toString('hex').toLowerCase();
+    const newKey = crypto.randomBytes(24).toString('hex').toLowerCase();
     const expiresAt = Date.now() + (parseInt(req.body.days) * 24 * 60 * 60 * 1000);
 
     db.apiKeys[newKey] = { createdAt: Date.now(), expiresAt, userId: null, username: null };
