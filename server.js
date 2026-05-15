@@ -1,1155 +1,2209 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Luau-Auth | Script Manager</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/lua/lua.min.js"></script>
-    <script src="https://unpkg.com/luaparse@0.3.1/luaparse.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Inter', 'sans-serif'] },
-                    colors: { brand: { 500: '#4f46e5', 600: '#4338ca' } }
-                }
-            }
+console.log("Starting Sanctuary Backend...");
+
+const express = require('express');
+const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder, REST, Routes, SlashCommandBuilder, AttachmentBuilder, PermissionFlagsBits, StringSelectMenuBuilder } = require('discord.js');
+
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.static(__dirname));
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+const dbPath = path.join(__dirname, 'database.json');
+const ADMIN_IDS = ["1284247278957367337", "1282859051092414586"];
+
+// Secure Environment Variables (Set these in Railway)
+const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
+const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const HOST_URL = process.env.HOST_URL;
+const REDIRECT_URI = `${HOST_URL}/api/auth/callback`;
+
+// Safe Unicode Emojis
+const EMOJI_CHECK = "\u2705";
+const EMOJI_CROSS = "\u274C";
+const EMOJI_TADA = "\uD83C\uDF89";
+const EMOJI_SAD = "\uD83D\uDE22";
+const EMOJI_BROOM = "\uD83E\uDDF9";
+const EMOJI_TRASH = "\uD83D\uDDD1\uFE0F";
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+
+const readDB = () => {
+    try {
+        if (fs.existsSync(dbPath)) {
+            const data = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+            if (!data.apiKeys) data.apiKeys = {};
+            if (!data.projects) data.projects = [];
+            if (!data.guildConfigs) data.guildConfigs = {};
+            if (!data.giveaways) data.giveaways = [];
+            return data;
         }
-    </script>
-    <style>
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
-        @keyframes toastEnter { 0% { transform: translateX(100%) scale(0.9); opacity: 0; } 100% { transform: translateX(0) scale(1); opacity: 1; } }
-        @keyframes toastLeave { 0% { transform: translateX(0) scale(1); opacity: 1; } 100% { transform: translateX(100%) scale(0.9); opacity: 0; } }
-        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-        .toast-enter { animation: toastEnter 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
-        .toast-leave { animation: toastLeave 0.3s cubic-bezier(0.5, 0, 0.2, 1) forwards; }
-        .modal-animate { animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    } catch (err) {}
+    return { projects: [], apiKeys: {}, sessions: {}, guildConfigs: {}, giveaways: [] };
+};
+
+const writeDB = (data) => {
+    try { fs.writeFileSync(dbPath, JSON.stringify(data, null, 2)); } catch (err) {}
+};
+
+const requireValidAccess = (req, res, next) => {
+    const { apiKey, discordId } = req.body;
+    if (ADMIN_IDS.includes(discordId)) return next();
+    if (!apiKey) return res.status(401).json({ error: "API Key required" });
+    const db = readDB();
+    const keyData = db.apiKeys[apiKey];
+    if (!keyData) return res.status(401).json({ error: "Invalid API Key" });
+    if (Date.now() > keyData.expiresAt) return res.status(403).json({ error: "API Key expired" });
+    next();
+};
+
+app.get('/api/auth/discord', (req, res) => {
+    if (!DISCORD_CLIENT_ID || !HOST_URL) return res.status(500).send("Railway Variables not configured.");
+    res.redirect(`https://discord.com/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify`);
+});
+
+app.get('/api/auth/callback', async (req, res) => {
+    const { code } = req.query;
+    if (!code) return res.send("No code provided.");
+    try {
+        const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+            method: 'POST',
+            body: new URLSearchParams({
+                client_id: DISCORD_CLIENT_ID,
+                client_secret: DISCORD_CLIENT_SECRET,
+                grant_type: 'authorization_code',
+                code: code,
+                redirect_uri: REDIRECT_URI
+            }),
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+        const tokenData = await tokenResponse.json();
+        const userResponse = await fetch('https://discord.com/api/users/@me', {
+            headers: { authorization: `Bearer ${tokenData.access_token}` }
+        });
+        const userData = await userResponse.json();
         
-        .cm-s-luauauth.CodeMirror { 
-            background: rgba(0, 0, 0, 0.3); color: #e2e8f0; border-radius: 1rem; padding: 1.25rem; 
-            font-family: monospace; font-size: 13px; line-height: 1.6; border: 1px solid rgba(255, 255, 255, 0.05); 
-            height: 320px; transition: all 0.3s ease; backdrop-filter: blur(20px); 
-        }
-        
-        button, div, input, select { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        button:hover { transform: translateY(-2px); }
-        button:active { transform: translateY(1px); }
-        
-        .glass-card { 
-            background: rgba(15, 15, 20, 0.3); backdrop-filter: blur(25px); 
-            border: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3); 
-        }
-        .glass-input { 
-            background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); backdrop-filter: blur(15px); 
-        }
-        .glass-input:focus { 
-            border-color: rgba(79, 70, 229, 0.6); box-shadow: inset 0 0 15px rgba(79, 70, 229, 0.15), 0 0 15px rgba(79, 70, 229, 0.15); 
-        }
-        .glass-btn { 
-            background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(15px); 
-        }
-        .glass-btn:hover { 
-            background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.15); box-shadow: 0 5px 15px rgba(0,0,0,0.2); 
-        }
-        .gradient-btn {
-            background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
-            box-shadow: 0 0 20px rgba(79,70,229,0.4);
-            border: 1px solid rgba(255,255,255,0.1);
-        }
-        .gradient-btn:hover {
-            box-shadow: 0 0 30px rgba(79,70,229,0.6);
-            background: linear-gradient(135deg, #4338ca 0%, #2563eb 100%);
-        }
-    </style>
-</head>
-<body class="bg-[#05050a] text-zinc-100 font-sans h-screen flex overflow-hidden selection:bg-brand-500/30 relative">
-
-    <div class="fixed inset-0 z-0 pointer-events-none">
-        <div class="absolute top-[-20%] left-[-10%] w-[60vw] h-[60vw] bg-brand-600/10 blur-[130px] rounded-full mix-blend-screen animate-pulse duration-[8s]"></div>
-        <div class="absolute bottom-[-20%] right-[-10%] w-[60vw] h-[60vw] bg-indigo-600/10 blur-[130px] rounded-full mix-blend-screen animate-pulse duration-[10s]" style="animation-delay: 2s;"></div>
-        <div class="absolute top-[20%] left-[50%] w-[40vw] h-[40vw] bg-blue-500/5 blur-[100px] rounded-full mix-blend-screen animate-pulse duration-[12s]" style="animation-delay: 4s;"></div>
-    </div>
-
-    <aside id="main-sidebar" class="w-64 bg-black/20 backdrop-blur-3xl border-r border-white/5 flex flex-col z-20 shadow-[5px_0_30px_rgba(0,0,0,0.5)] hidden transition-all duration-500">
-        <div class="p-6 border-b border-white/5 flex justify-between items-center relative overflow-hidden">
-            <div class="absolute top-0 right-0 w-20 h-20 bg-brand-500/10 blur-[20px] rounded-full pointer-events-none"></div>
-            <h1 class="text-xl font-extrabold text-white flex items-center gap-3 relative z-10"><div class="p-2 bg-brand-500/20 border border-brand-500/30 rounded-xl shadow-[0_0_15px_rgba(79,70,229,0.3)]"><i data-lucide="shield" class="text-brand-400 w-5 h-5"></i></div>Luau-Auth</h1>
-            <div id="bell-icon-container" class="relative cursor-pointer hover:scale-110 hidden relative z-10" onclick="showToast('Your API Key is expiring soon!', 'error')">
-                <i data-lucide="bell" class="w-5 h-5 text-zinc-400 hover:text-white"></i>
-                <span class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>
-            </div>
-        </div>
-        
-        <div id="user-profile-area" class="p-5 border-b border-white/5 bg-white/[0.01]"></div>
-
-        <nav id="sidebar-nav" class="flex-1 p-5 space-y-2">
-            <button onclick="setTab('dashboard')" id="tab-dashboard" class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold tracking-wide"><i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard</button>
-            <button onclick="setTab('projects')" id="tab-projects" class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold tracking-wide"><i data-lucide="folder" class="w-5 h-5"></i> Projects</button>
-            <button onclick="setTab('keys')" id="tab-keys" class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold tracking-wide"><i data-lucide="key" class="w-5 h-5"></i> HWID Keys</button>
-            <button onclick="setTab('register')" id="tab-register" class="w-full items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold tracking-wide hidden"><i data-lucide="users" class="w-5 h-5"></i> Register</button>
-            <button onclick="setTab('settings')" id="tab-settings" class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold tracking-wide"><i data-lucide="settings" class="w-5 h-5"></i> Settings</button>
-        </nav>
-        
-        <div id="logout-container" class="p-5 border-t border-white/5 hidden bg-white/[0.01]">
-            <button onclick="openLogoutModal()" class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-zinc-400 hover:bg-red-500/10 hover:text-red-400 hover:border hover:border-red-500/20 text-sm font-bold tracking-wide transition-all">
-                <i data-lucide="log-out" class="w-5 h-5"></i> Logout
-            </button>
-        </div>
-    </aside>
-
-    <main class="flex-1 overflow-y-auto relative z-10 flex flex-col transition-all duration-500 w-full min-w-0">
-        <div id="main-content" class="p-4 sm:p-10 max-w-7xl mx-auto flex-1 w-full overflow-x-hidden">
-            <div class="flex items-center justify-center h-full">
-                <div class="p-4 bg-brand-500/10 rounded-full border border-brand-500/20 shadow-[0_0_30px_rgba(79,70,229,0.3)] animate-pulse">
-                    <i data-lucide="loader-2" class="w-10 h-10 animate-spin text-brand-400"></i>
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <div id="modal-container" class="z-50 relative"></div>
-    <div id="toast-container" class="fixed bottom-8 right-8 z-50 flex flex-col gap-3 pointer-events-none"></div>
-
-    <script>
-        const state = {
-            activeTab: 'dashboard',
-            projects: [],
-            adminKeys: {},
-            user: null,
-            apiKey: localStorage.getItem('sanctuary_api_key') || "",
-            draftScript: { projectId: null, file: null, code: null }
+        const safeUserObj = {
+            id: userData.id,
+            username: userData.username,
+            avatar: userData.avatar || '',
+            isAdmin: ADMIN_IDS.includes(userData.id)
         };
+        
+        const htmlResponse = `
+            <script>
+                localStorage.setItem('sanctuary_user', JSON.stringify(${JSON.stringify(safeUserObj)}));
+                window.location.href = "/";
+            </script>
+        `;
+        res.send(htmlResponse);
+    } catch (err) {
+        res.status(500).send("Authentication failed.");
+    }
+});
 
-        function showToast(message, type = 'success') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            toast.className = `toast-enter pointer-events-auto flex items-center gap-4 px-5 py-4 rounded-2xl border border-white/10 backdrop-blur-3xl bg-[#0a0a0f]/90 shadow-[0_10px_40px_0_rgba(0,0,0,0.5)] text-sm font-bold text-white`;
-            toast.innerHTML = `<div class="p-1.5 rounded-full ${type === 'error' ? 'bg-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.4)]' : 'bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.4)]'}"><i data-lucide="${type === 'error' ? 'alert-circle' : 'check-circle'}" class="w-5 h-5 ${type === 'error' ? 'text-red-400' : 'text-emerald-400'}"></i></div><span class="tracking-wide">${message}</span>`;
-            container.appendChild(toast);
-            lucide.createIcons();
-            setTimeout(() => { toast.classList.remove('toast-enter'); toast.classList.add('toast-leave'); setTimeout(() => toast.remove(), 300); }, 3000);
+app.post('/api/link-key', (req, res) => {
+    const { apiKey, discordId, discordName } = req.body;
+    const db = readDB();
+    if (!db.apiKeys[apiKey]) return res.status(400).json({ error: "Invalid Key" });
+    db.apiKeys[apiKey].userId = discordId;
+    db.apiKeys[apiKey].username = discordName;
+    writeDB(db);
+    res.json({ success: true, expiresAt: db.apiKeys[apiKey].expiresAt });
+});
+
+app.post('/api/check-key', (req, res) => {
+    const { apiKey } = req.body;
+    const db = readDB();
+    const keyData = db.apiKeys[apiKey];
+    if (!keyData) return res.json({ valid: false });
+    res.json({ valid: true, expiresAt: keyData.expiresAt });
+});
+
+const requireAdmin = (req, res, next) => {
+    if (!ADMIN_IDS.includes(req.body.discordId)) return res.status(403).json({ error: "Unauthorized" });
+    next();
+};
+
+app.post('/api/admin/keys', requireAdmin, (req, res) => res.json({ keys: readDB().apiKeys }));
+
+app.post('/api/admin/generate-key', requireAdmin, (req, res) => {
+    const db = readDB();
+    const newKey = crypto.randomBytes(12).toString('hex').toLowerCase();
+    const expiresAt = Date.now() + (parseInt(req.body.days) * 24 * 60 * 60 * 1000);
+    db.apiKeys[newKey] = { createdAt: Date.now(), expiresAt: expiresAt, userId: null, username: null };
+    writeDB(db);
+    res.json({ key: newKey, expiresAt: expiresAt });
+});
+
+app.post('/api/admin/extend-key', requireAdmin, (req, res) => {
+    const { targetKey, days } = req.body;
+    const db = readDB();
+    if (!db.apiKeys[targetKey]) return res.status(404).json({ error: "Not found" });
+    db.apiKeys[targetKey].expiresAt += (parseInt(days) * 24 * 60 * 60 * 1000);
+    writeDB(db);
+    res.json({ success: true });
+});
+
+app.post('/api/admin/revoke-key', requireAdmin, (req, res) => {
+    const db = readDB();
+    if (db.apiKeys[req.body.targetKey]) {
+        delete db.apiKeys[req.body.targetKey];
+        writeDB(db);
+    }
+    res.json({ success: true });
+});
+
+app.get('/api/sync', (req, res) => {
+    const { discordId } = req.query;
+    const db = readDB();
+    if (!discordId) return res.json({ projects: [] });
+    const isAdmin = ADMIN_IDS.includes(discordId);
+    let needsSave = false;
+    db.projects.forEach(p => {
+        if (!p.ownerId) { p.ownerId = discordId; needsSave = true; }
+        if (p.freeMode === undefined) { p.freeMode = true; needsSave = true; }
+        if (p.hwidResetCooldown === undefined) { p.hwidResetCooldown = 24; needsSave = true; }
+        if (!p.hwidKeys) { p.hwidKeys = []; needsSave = true; }
+    });
+    if (needsSave) writeDB(db);
+    res.json({ projects: isAdmin ? db.projects : db.projects.filter(p => p.ownerId === discordId) });
+});
+
+app.post('/api/sync', requireValidAccess, (req, res) => {
+    const db = readDB();
+    const incomingProjects = req.body.projects;
+    const discordId = req.body.discordId;
+    const isAdmin = ADMIN_IDS.includes(discordId);
+    if (isAdmin) {
+        db.projects = incomingProjects;
+    } else {
+        const otherUsersProjects = db.projects.filter(p => p.ownerId !== discordId);
+        const userProjectsToSave = incomingProjects.filter(p => p.ownerId === discordId || !p.ownerId);
+        userProjectsToSave.forEach(p => p.ownerId = discordId);
+        db.projects = [...otherUsersProjects, ...userProjectsToSave];
+    }
+    writeDB(db);
+    res.json({ success: true });
+});
+
+app.get('/raw/:projectId/:scriptId', async (req, res) => {
+    const { projectId, scriptId } = req.params;
+    const { key, hwid } = req.query;
+    const acceptHeader = req.headers['accept'] || "";
+    
+    if (acceptHeader.includes("text/html")) {
+        res.type('text/plain');
+        return res.send(`print("Script ID: ${scriptId}")`);
+    }
+    
+    const db = readDB();
+    const project = db.projects.find(p => p.id === projectId);
+    
+    let currentIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || "UNKNOWN";
+    if (typeof currentIp === 'string' && currentIp.includes(',')) {
+        currentIp = currentIp.split(',').shift().trim();
+    }
+
+    if (project) {
+        const script = project.scripts.find(s => s.id === scriptId);
+        if (script) {
+            res.type('text/plain');
+            if (script.status !== 'Active') {
+                return res.send(`print("This script is no longer working.")`);
+            }
+            
+            let finalLuaCode = `
+local v0 = (getexecutorname and getexecutorname()) or ""
+local v1 = ${script.allowSolaraXeno === true ? "true" : "false"}
+local v2 = function()
+    print("Running Sanctuary Engine...")
+    pcall(function()
+        if not v1 then
+            if v0 and (v0:lower():find("xeno") or v0:lower():find("solara")) then
+                game:GetService("Players").LocalPlayer:Kick("You are using an executor that doesn't support this script.\\nExecutor: [" .. v0 .. "]\\nPlease use another executor.")
+            else
+                if v0 ~= nil and v0 ~= "" then
+                    print("Executor:" .. v0)
+                    print("Valid Executor.")
+                end
+            end
+        end
+    end)
+end
+v2()
+
+`;
+
+            if (project.freeMode === false) {
+                if (!key) return res.send(`game:GetService("Players").LocalPlayer:Kick("Sanctuary: No Script Key Provided")`);
+                const hwidKey = (project.hwidKeys || []).find(k => k.key === key);
+                if (!hwidKey || hwidKey.expiresAt < Date.now()) {
+                    return res.send(`game:GetService("Players").LocalPlayer:Kick("Sanctuary: Invalid or expired key")`);
+                }
+                if (!hwidKey.hwid) {
+                    hwidKey.hwid = hwid || "UNKNOWN";
+                    hwidKey.ip = currentIp;
+                    writeDB(db);
+                } else {
+                    if (hwidKey.hwid !== hwid && hwid) {
+                        return res.send(`game:GetService("Players").LocalPlayer:Kick("Sanctuary: Invalid HWID. Key is locked to another device.")`);
+                    }
+                    if (hwidKey.ip && hwidKey.ip !== currentIp && currentIp !== "UNKNOWN") {
+                        return res.send(`game:GetService("Players").LocalPlayer:Kick("Sanctuary: Invalid IP Address. Key is locked to another network.")`);
+                    }
+                }
+                if (project.discordConfig && project.discordConfig.roleId && hwidKey.userId) {
+                    try {
+                        const guild = await client.guilds.fetch(project.discordConfig.guildId);
+                        const member = await guild.members.fetch(hwidKey.userId);
+                        if (!member.roles.cache.has(project.discordConfig.roleId)) {
+                            return res.send(`game:GetService("Players").LocalPlayer:Kick("Sanctuary: Missing Discord Role")`);
+                        }
+                    } catch (err) {
+                        return res.send(`game:GetService("Players").LocalPlayer:Kick("Sanctuary: Discord Authentication Error")`);
+                    }
+                }
+
+                finalLuaCode += `
+local _authKey = getgenv().script_key
+local _authHwid1 = (gethwid and gethwid()) or "nohwid"
+local _authHwid2 = game:GetService("RbxAnalyticsService"):GetClientId()
+local _authHwid = _authHwid1 .. "_" .. _authHwid2
+if not _authKey or _authKey == "" then
+    game:GetService("Players").LocalPlayer:Kick("Sanctuary: Whitelist Error - No Key Provided")
+    return
+end
+if _authKey ~= "${key}" then
+    game:GetService("Players").LocalPlayer:Kick("Sanctuary: Whitelist Error - Key Mismatch")
+    return
+end\n\n`;
+            }
+            
+            script.executions = (script.executions || 0) + 1;
+            if (!script.executionHistory) script.executionHistory = {};
+            const today = new Date().toISOString().split('T').shift();
+            script.executionHistory[today] = (script.executionHistory[today] || 0) + 1;
+            writeDB(db);
+            
+            if (project.webhookUrl && project.webhookUrl.trim() !== "") {
+                finalLuaCode += `
+pcall(function()
+    local request = http_request or syn and syn.request or request
+    if not request then return end
+    local HttpService = game:GetService("HttpService")
+    local Players = game:GetService("Players")
+    local UIS = game:GetService("UserInputService")
+    local player = Players.LocalPlayer
+    local executor = (getexecutorname and getexecutorname()) or (identifyexecutor and identifyexecutor()) or "Unknown"
+    local deviceType = "Unknown"
+    if UIS.TouchEnabled and not UIS.KeyboardEnabled then deviceType = "Mobile"
+    elseif UIS.GamepadEnabled and not UIS.KeyboardEnabled then deviceType = "Console"
+    elseif UIS.KeyboardEnabled then deviceType = "PC" end
+    getgenv().execCount = (getgenv().execCount or 0) + 1
+    local payload = {
+        username = "Sanctuary Logger",
+        embeds = {{
+            title = "Execution Log",
+            color = 0x4F6CEE,
+            fields = {
+                { name = "User Info", value = "Name: " .. player.Name .. "\\nUserId: " .. player.UserId, inline = false },
+                { name = "Script Triggered", value = "${script.name}", inline = false },
+                { name = "Executor", value = executor, inline = false },
+                { name = "Device", value = deviceType, inline = true },
+                { name = "IP Address", value = "${currentIp}", inline = true },
+                { name = "Executions", value = tostring(getgenv().execCount), inline = true }
+            }
+        }}
+    }
+    request({ Url = "${project.webhookUrl}", Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = HttpService:JSONEncode(payload) })
+end)\n\n`;
+            }
+            return res.send(finalLuaCode + (script.code || `print("Empty script")`));
         }
+    }
+    res.status(404).send(`print("Error: Script or Project not found")`);
+});
 
-        function copyToClipboard(text, successMsg) {
-            const textArea = document.createElement("textarea"); textArea.value = text; textArea.style.position = "fixed"; 
-            document.body.appendChild(textArea); textArea.focus(); textArea.select();
-            try { document.execCommand('copy'); showToast(successMsg || 'Copied!'); } catch (err) { showToast('Failed to copy', 'error'); }
-            document.body.removeChild(textArea);
-        }
+app.get('/loader/:projectId', (req, res) => {
+    const project = readDB().projects.find(p => p.id === req.params.projectId);
+    if (project) {
+        res.type('text/plain');
+        let scriptsTable = "";
+        (project.scripts || []).forEach(s => {
+            if (s.gameId && s.gameId !== "") {
+                scriptsTable += `    ["${s.gameId}"] = "${HOST_URL}/raw/${project.id}/${s.id}",\n`;
+            } else {
+                scriptsTable += `    ["Universal"] = "${HOST_URL}/raw/${project.id}/${s.id}",\n`;
+            }
+        });
+        
+        let authSnippet = "";
+        let callSnippet = `loadstring(game:HttpGet(Script))()`;
 
-        async function generateSHA256(text) {
-            const msgBuffer = new TextEncoder().encode(text + Date.now().toString());
-            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-            return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-
-        function incrementVersion(ver) {
-            let parts = ver.replace('v', '').split('.');
-            let patch = parseInt(parts.pop() || 0) + 1; parts.push(patch); return `v${parts.join('.')}`;
+        if (project.freeMode === false) {
+            authSnippet = `\nlocal AuthKey = getgenv().script_key or ""\nlocal hw1 = (gethwid and gethwid()) or "nohwid"\nlocal hw2 = game:GetService("RbxAnalyticsService"):GetClientId()\nlocal hwid = hw1 .. "_" .. hw2\n`;
+            callSnippet = `loadstring(game:HttpGet(Script .. "?key=" .. AuthKey .. "&hwid=" .. hwid))()`;
         }
         
-        function getShortDate() {
-            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-            const today = new Date(); return `${months.at(today.getMonth())} ${today.getDate()}`;
-        }
+        let dynamicLoader = `local ProjectId = "${project.id}"\n`;
+        dynamicLoader += `local Scripts = {\n${scriptsTable}}\n`;
+        dynamicLoader += `local Script = Scripts[tostring(game.GameId)] or Scripts[game.GameId] or Scripts["Universal"]\n`;
+        dynamicLoader += `if Script then${authSnippet}\n    ${callSnippet}\nelse\n    warn("Sanctuary: No valid script found for this game.")\nend`;
+        
+        return res.send(dynamicLoader);
+    }
+    res.status(404).send(`print("Error: Project not found")`);
+});
 
-        function generateHWIDKey() {
-            return Array.from(crypto.getRandomValues(new Uint8Array(12))).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
+const cmds = [];
 
-        async function initApp() {
-            const userData = localStorage.getItem('sanctuary_user');
-            if (userData) {
-                state.user = JSON.parse(userData);
-                document.getElementById('main-sidebar').classList.remove('hidden');
-                
-                const avatarUrl = state.user.avatar && state.user.avatar !== "" ? `https://cdn.discordapp.com/avatars/${state.user.id}/${state.user.avatar}.png` : null;
-                const avatarHtml = avatarUrl ? `<img src="${avatarUrl}" class="w-11 h-11 rounded-2xl border border-brand-500/40 object-cover shadow-[0_0_15px_rgba(79,70,229,0.3)] transition-all hover:scale-110 hover:rotate-3">` : `<div class="w-11 h-11 rounded-2xl bg-brand-500/20 flex items-center justify-center text-brand-400 font-black text-lg uppercase border border-brand-500/40 shadow-[0_0_15px_rgba(79,70,229,0.3)] transition-all hover:scale-110 hover:rotate-3">${state.user.username.charAt(0)}</div>`;
+const cmdLogin = new SlashCommandBuilder()
+    .setName('login')
+    .setDescription('Link your API Key to your Discord account')
+    .addStringOption(opt => opt.setName('api_key').setDescription('Your Sanctuary API Key').setRequired(true));
+cmds.push(cmdLogin);
 
-                document.getElementById('user-profile-area').innerHTML = `
-                    <div class="flex items-center gap-4">
-                        ${avatarHtml}
-                        <div class="overflow-hidden">
-                            <p class="text-sm font-extrabold text-white truncate tracking-wide">${state.user.username}</p>
-                            <p class="text-[10px] uppercase tracking-widest text-zinc-400 font-black flex items-center gap-1.5 mt-0.5">
-                                ${state.user.isAdmin ? '<i data-lucide="crown" class="w-3.5 h-3.5 text-yellow-400 drop-shadow-[0_0_5px_rgba(250,204,21,0.8)]"></i> <span class="text-yellow-400">ADMIN</span>' : 'MEMBER'}
-                            </p>
-                        </div>
-                    </div>
-                `;
-                
-                if (state.user.isAdmin) {
-                    const regBtn = document.getElementById('tab-register');
-                    regBtn.classList.remove('hidden'); regBtn.classList.add('flex');
+const otherCmds = ['set_admin_role', 'setup_panel', 'create_giveaway', 'generate_key', 'clear_keys', 'user_info', 'reset_hwid', 'extend_key', 'revoke_key'];
+for (const name of otherCmds) {
+    cmds.push(new SlashCommandBuilder().setName(name).setDescription(`Execute ${name}`));
+}
+
+client.once('ready', async () => {
+    if (!DISCORD_BOT_TOKEN) {
+        console.log("❌ DISCORD_BOT_TOKEN is missing in Railway Variables!");
+        return;
+    }
+    const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
+    try {
+        const cmdJson = cmds.map(c => c.toJSON());
+        await rest.put(Routes.applicationCommands(client.user.id), { body: cmdJson });
+        console.log("✅ Slash commands fully registered.");
+    } catch (error) {
+        console.log("❌ Failed to register commands:", error);
+    }
+});
+
+client.on('messageCreate', async message => {
+    if (message.author.bot || !message.guild) return;
+    if (message.member && message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
+    if (ADMIN_IDS.includes(message.author.id)) return;
+
+    const content = message.content.toLowerCase();
+    const inviteRegex = /(discord\.(gg|com\/invite)\/|dsc\.gg\/|invite\.gg\/)/i;
+    const promoRegex = /(youtube\.com\/(c|channel)\/|twitch\.tv\/|onlyfans\.com\/|tiktok\.com\/@|twitter\.com\/)/i;
+    
+    if (inviteRegex.test(content) || promoRegex.test(content)) {
+        await message.delete().catch(() => {});
+        const warnMsg = await message.channel.send(`<@${message.author.id}>, posting invites or self-promotion is not allowed!`);
+        setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
+        return;
+    }
+
+    if (message.mentions.users.size > 4) {
+        await message.delete().catch(() => {});
+        const warnMsg = await message.channel.send(`<@${message.author.id}>, please do not mass-mention users.`);
+        setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
+        return;
+    }
+});
+
+setInterval(async () => {
+    const db = readDB();
+    let needsSave = false;
+    
+    for (let p of db.projects) {
+        if (!p.hwidKeys) continue;
+        for (let k of p.hwidKeys) {
+            if (k.userId && Date.now() > k.expiresAt && !k.roleRemoved) {
+                if (p.discordConfig && p.discordConfig.roleId) {
+                    try {
+                        const guild = await client.guilds.fetch(p.discordConfig.guildId);
+                        const member = await guild.members.fetch(k.userId);
+                        await member.roles.remove(p.discordConfig.roleId);
+                    } catch (err) {}
                 }
-                document.getElementById('logout-container').classList.remove('hidden');
-                
-                await loadFromServer();
-                checkApiKeyStatus();
-            } else {
-                renderLoginPanel();
-            }
-            lucide.createIcons();
-        }
-
-        function renderLoginPanel() {
-            document.getElementById('main-content').innerHTML = `
-                <div class="flex items-center justify-center h-full">
-                    <div class="glass-card rounded-[2.5rem] p-12 max-w-lg w-full text-center modal-animate relative overflow-hidden shadow-[0_20px_50px_0_rgba(0,0,0,0.5)]">
-                        <div class="absolute top-0 right-0 w-48 h-48 bg-brand-500/10 blur-[60px] rounded-full pointer-events-none"></div>
-                        <div class="absolute bottom-0 left-0 w-48 h-48 bg-indigo-500/10 blur-[60px] rounded-full pointer-events-none"></div>
-                        
-                        <div class="w-24 h-24 bg-gradient-to-br from-brand-500/20 to-indigo-500/20 text-brand-400 rounded-[2rem] flex items-center justify-center mx-auto mb-8 border border-brand-500/30 shadow-[0_0_40px_rgba(79,70,229,0.3)] relative z-10"><i data-lucide="shield" class="w-12 h-12 drop-shadow-[0_0_10px_rgba(79,70,229,0.8)]"></i></div>
-                        <h2 class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-zinc-400 mb-4 tracking-tighter relative z-10">Luau-Auth</h2>
-                        <p class="text-zinc-400 text-base mb-12 font-medium tracking-wide relative z-10">Securely authenticate via Discord to access the dashboard.</p>
-                        
-                        <a href="/api/auth/discord" class="relative group w-full flex items-center justify-center gap-3 bg-[#5865F2]/90 hover:bg-[#4752C4] text-white py-4 px-6 rounded-2xl text-base font-extrabold shadow-[0_0_30px_rgba(88,101,242,0.4)] border border-white/10 transition-all hover:-translate-y-1.5 overflow-hidden z-10">
-                            <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                            <i data-lucide="log-in" class="w-6 h-6 relative z-10"></i> <span class="relative z-10 tracking-widest uppercase">Login with Discord</span>
-                        </a>
-                    </div>
-                </div>
-            `;
-            lucide.createIcons();
-        }
-
-        async function checkApiKeyStatus() {
-            if (!state.apiKey || state.user.isAdmin) return;
-            try {
-                const res = await fetch('/api/check-key', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ apiKey: state.apiKey })
-                });
-                const data = await res.json();
-                if (data.valid) {
-                    const daysLeft = Math.ceil((data.expiresAt - Date.now()) / (1000 * 60 * 60 * 24));
-                    if (daysLeft <= 3 && daysLeft >= 1) {
-                        document.getElementById('bell-icon-container').classList.remove('hidden');
-                    } else {
-                        document.getElementById('bell-icon-container').classList.add('hidden');
-                    }
-                }
-            } catch (err) {}
-        }
-
-        async function saveApiKey() {
-            const key = document.getElementById('input-user-apikey').value.trim();
-            if(!key) return showToast('Please enter an API key', 'error');
-            try {
-                const res = await fetch('/api/link-key', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ apiKey: key, discordId: state.user.id, discordName: state.user.username })
-                });
-                const data = await res.json();
-                if (data.error) throw new Error(data.error);
-                
-                state.apiKey = key; localStorage.setItem('sanctuary_api_key', key);
-                showToast('API Key saved!'); checkApiKeyStatus();
-            } catch (err) { showToast(err.message, 'error'); }
-        }
-
-        async function loadFromServer() {
-            try {
-                const res = await fetch(`/api/sync?discordId=${state.user.id}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.projects) {
-                        state.projects = data.projects;
-                    }
-                }
-            } catch (err) {} 
-            finally { renderApp(); }
-        }
-
-        async function syncToServer() {
-            try {
-                const res = await fetch('/api/sync', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ projects: state.projects, apiKey: state.apiKey, discordId: state.user.id })
-                });
-                const data = await res.json();
-                if (data.error) throw new Error(data.error);
-            } catch (err) { showToast(err.message || 'Failed to save. Check key.', 'error'); throw err; }
-        }
-
-        function openLogoutModal() {
-            document.getElementById('modal-container').innerHTML = `
-            <div class="fixed inset-0 bg-black/60 backdrop-blur-xl flex items-center justify-center z-50 p-4">
-                <div class="glass-card border border-white/10 p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl modal-animate text-center relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-40 h-40 bg-red-500/10 blur-[50px] rounded-full pointer-events-none"></div>
-                    <div class="w-20 h-20 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto mb-6 hover:scale-110 transition-transform shadow-[0_0_20px_rgba(239,68,68,0.3)] relative z-10"><i data-lucide="log-out" class="w-10 h-10"></i></div>
-                    <h3 class="text-3xl font-black text-white mb-3 tracking-tight relative z-10">Sign Out</h3>
-                    <p class="text-sm text-zinc-400 mb-10 font-medium relative z-10">Are you sure you want to sign out or switch accounts?</p>
-                    <div class="flex gap-4 relative z-10">
-                        <button onclick="closeModal()" class="flex-1 px-6 py-4 glass-btn text-white rounded-2xl text-sm font-extrabold tracking-wide">Cancel</button>
-                        <button onclick="confirmLogout()" class="flex-1 px-6 py-4 bg-red-500/90 hover:bg-red-500 text-white rounded-2xl text-sm font-extrabold border border-red-500/50 shadow-[0_0_20px_rgba(239,68,68,0.4)] hover:-translate-y-1 transition-all tracking-wide">Sign Out</button>
-                    </div>
-                </div>
-            </div>`;
-            lucide.createIcons();
-        }
-
-        function confirmLogout() {
-            localStorage.removeItem('sanctuary_user'); localStorage.removeItem('sanctuary_api_key');
-            window.location.reload();
-        }
-
-        async function setTab(tab) { 
-            state.activeTab = tab; 
-            if (tab === 'keys' || tab === 'dashboard') await loadFromServer();
-            else renderApp();
-        }
-
-        function renderApp() {
-            if (!state.user) return;
-
-            ['dashboard', 'projects', 'keys', 'settings'].forEach(t => {
-                const el = document.getElementById(`tab-${t}`);
-                if (el) el.className = `w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-sm font-bold tracking-wide transition-all ${state.activeTab === t ? 'bg-gradient-to-r from-brand-600/20 to-transparent text-brand-300 border-l-4 border-brand-500 shadow-[inset_0_0_20px_rgba(79,70,229,0.1)]' : 'text-zinc-400 hover:bg-white/5 hover:text-white border-l-4 border-transparent'}`;
-            });
-            const regTab = document.getElementById('tab-register');
-            if (regTab) regTab.className = `w-full items-center gap-4 px-5 py-4 rounded-2xl text-sm font-bold tracking-wide transition-all ${state.activeTab === 'register' ? 'bg-gradient-to-r from-brand-600/20 to-transparent text-brand-300 border-l-4 border-brand-500 shadow-[inset_0_0_20px_rgba(79,70,229,0.1)]' : 'text-zinc-400 hover:bg-white/5 hover:text-white border-l-4 border-transparent'} ${state.user.isAdmin ? 'flex' : 'hidden'}`;
-
-            const main = document.getElementById('main-content');
-            
-            if (state.activeTab === 'dashboard') {
-                renderDashboard(main);
-            } else if (state.activeTab === 'projects') {
-                renderProjects(main);
-            } else if (state.activeTab === 'keys') {
-                renderKeys(main);
-            } else if (state.activeTab === 'register') {
-                renderRegister(main);
-            } else {
-                renderSettings(main);
-            }
-            lucide.createIcons();
-        }
-
-        function renderProjects(mainContainer) {
-            mainContainer.innerHTML = `
-                <div class="flex justify-between items-end mb-10 modal-animate">
-                    <div><h2 class="text-5xl font-black text-white tracking-tighter">Projects</h2><p class="text-zinc-400 text-base mt-2 font-semibold tracking-wide">Manage your script hubs and loaders.</p></div>
-                    <button onclick="openCreateProjectModal()" class="gradient-btn text-white px-7 py-3.5 rounded-xl flex items-center gap-3 font-extrabold hover:-translate-y-1 transition-all"><i data-lucide="plus" class="w-5 h-5"></i> Create Project</button>
-                </div>
-                <div class="space-y-6 modal-animate">${renderProjectsList()}</div>
-            `;
-        }
-
-        function renderDashboard(mainContainer) {
-            let totalExecutions = 0;
-            let topScript = { name: "N/A", execs: 0 };
-            
-            state.projects.forEach(p => p.scripts.forEach(s => {
-                const execs = s.executions || 0;
-                totalExecutions += execs;
-                if (execs >= topScript.execs && execs > 0) {
-                    topScript = { name: s.name, execs: execs };
-                }
-            }));
-
-            mainContainer.innerHTML = `
-                <div class="flex justify-between items-end mb-10 modal-animate">
-                    <div><h2 class="text-5xl font-black text-white tracking-tighter">Dashboard Overview</h2><p class="text-zinc-400 text-base mt-2 font-semibold tracking-wide">Track analytics and real-time script executions.</p></div>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10 modal-animate">
-                    <div class="glass-card rounded-[2rem] p-8 flex items-center gap-6 hover:bg-white/[0.05] hover:border-brand-500/40 hover:-translate-y-1.5 transition-all group relative overflow-hidden">
-                        <div class="absolute top-0 right-0 w-32 h-32 bg-brand-500/5 blur-[40px] rounded-full group-hover:bg-brand-500/20 transition-all"></div>
-                        <div class="w-16 h-16 bg-brand-500/20 rounded-2xl flex items-center justify-center border border-brand-500/30 text-brand-400 shadow-[0_0_20px_rgba(79,70,229,0.3)] relative z-10"><i data-lucide="activity" class="w-8 h-8"></i></div>
-                        <div class="relative z-10"><p class="text-zinc-400 text-xs font-black uppercase tracking-widest mb-1.5">Total Executions</p><p class="text-4xl font-black text-white">${totalExecutions.toLocaleString()}</p></div>
-                    </div>
-                    <div class="glass-card rounded-[2rem] p-8 flex items-center gap-6 hover:bg-white/[0.05] hover:border-emerald-500/40 hover:-translate-y-1.5 transition-all group relative overflow-hidden">
-                        <div class="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-[40px] rounded-full group-hover:bg-emerald-500/20 transition-all"></div>
-                        <div class="w-16 h-16 bg-emerald-500/20 rounded-2xl flex items-center justify-center border border-emerald-500/30 text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)] relative z-10"><i data-lucide="flame" class="w-8 h-8"></i></div>
-                        <div class="relative z-10"><p class="text-zinc-400 text-xs font-black uppercase tracking-widest mb-1.5">Most Executed</p><p class="text-3xl font-black text-white truncate max-w-[250px]">${topScript.name} <span class="text-xl font-bold text-emerald-500 ml-2">${topScript.execs > 0 ? `(${topScript.execs})` : ''}</span></p></div>
-                    </div>
-                </div>
-
-                <div class="glass-card rounded-[2.5rem] p-10 modal-animate hover:border-brand-500/30 transition-all w-full overflow-hidden relative">
-                    <div class="absolute -top-20 -left-20 w-64 h-64 bg-brand-500/10 blur-[80px] rounded-full pointer-events-none"></div>
-                    <h3 class="text-sm font-black text-white mb-8 flex items-center gap-3 uppercase tracking-widest relative z-10"><i data-lucide="bar-chart-2" class="w-5 h-5 text-brand-400"></i> Execution History</h3>
-                    <div class="h-[450px] w-full relative z-10">
-                        <canvas id="executionChart"></canvas>
-                    </div>
-                </div>
-            `;
-            
-            const ctx = document.getElementById('executionChart').getContext('2d');
-            const datesSet = new Set();
-            const totalHistory = {};
-
-            state.projects.forEach(p => p.scripts.forEach(s => {
-                let histSum = 0;
-                if (!s.executionHistory) s.executionHistory = {};
-                Object.values(s.executionHistory).forEach(v => histSum += v);
-                
-                if ((s.executions || 0) > histSum) {
-                    const fallbackDate = new Date().toISOString().split('T').shift();
-                    s.executionHistory[fallbackDate] = (s.executionHistory[fallbackDate] || 0) + (s.executions - histSum);
-                }
-
-                Object.keys(s.executionHistory).forEach(d => {
-                    datesSet.add(d);
-                    totalHistory[d] = (totalHistory[d] || 0) + s.executionHistory[d];
-                });
-            }));
-
-            if (datesSet.size === 0) datesSet.add(new Date().toISOString().split('T').shift());
-            
-            const labels = Array.from(datesSet).sort();
-            
-            const hexToRGBA = (hex, alpha) => {
-                let r = parseInt(hex.slice(1, 3), 16),
-                    g = parseInt(hex.slice(3, 5), 16),
-                    b = parseInt(hex.slice(5, 7), 16);
-                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-            };
-
-            const getGradient = (hex) => {
-                let grad = ctx.createLinearGradient(0, 0, 0, 450);
-                grad.addColorStop(0, hexToRGBA(hex, 0.4));
-                grad.addColorStop(1, hexToRGBA(hex, 0.0));
-                return grad;
-            };
-
-            const colors = ['#10b981', '#4f46e5', '#f43f5e', '#f59e0b', '#06b6d4', '#8b5cf6', '#d946ef'];
-            let colorIdx = 0;
-            const datasets = [];
-
-            state.projects.forEach(p => p.scripts.forEach(s => {
-                if(s.executions && s.executions > 0) {
-                    const c = colors[colorIdx % colors.length];
-                    datasets.push({
-                        label: `${p.name} - ${s.name}`,
-                        data: labels.map(d => (s.executionHistory && s.executionHistory[d]) ? s.executionHistory[d] : 0),
-                        borderColor: c,
-                        backgroundColor: getGradient(c),
-                        fill: true,
-                        tension: 0.45,
-                        borderWidth: 3,
-                        pointBackgroundColor: '#000',
-                        pointBorderColor: c,
-                        pointBorderWidth: 2,
-                        pointRadius: 5,
-                        pointHoverRadius: 8
-                    });
-                    colorIdx++;
-                }
-            }));
-
-            datasets.push({
-                label: 'Total Executions',
-                data: labels.map(d => totalHistory[d] || 0),
-                borderColor: 'rgba(255, 255, 255, 0.8)',
-                backgroundColor: 'transparent',
-                borderDash: Array.of(5, 5),
-                borderWidth: 3,
-                tension: 0.45,
-                pointRadius: 0,
-                fill: false
-            });
-
-            new Chart(ctx, {
-                type: 'line',
-                data: { labels, datasets },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    animation: { duration: 2000, easing: 'easeOutQuart' },
-                    interaction: { mode: 'index', intersect: false },
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.03)', drawBorder: false }, ticks: { color: 'rgba(255, 255, 255, 0.5)', padding: 10, font: { family: 'Inter', weight: 'bold' } } },
-                        x: { grid: { display: false }, ticks: { color: 'rgba(255, 255, 255, 0.5)', padding: 10, font: { family: 'Inter', weight: 'bold' } } }
-                    },
-                    plugins: {
-                        legend: { position: 'bottom', labels: { color: 'rgba(255, 255, 255, 0.8)', usePointStyle: true, boxWidth: 8, padding: 30, font: { family: 'Inter', weight: 'bold' } } },
-                        tooltip: { backgroundColor: 'rgba(0, 0, 0, 0.9)', titleColor: '#fff', bodyColor: '#ccc', borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, backdropFilter: 'blur(10px)', padding: 15, cornerRadius: 12, titleFont: { size: 14, family: 'Inter', weight: 'black' }, bodyFont: { size: 13, family: 'Inter', weight: 'bold' } }
-                    }
-                }
-            });
-        }
-
-        function renderKeys(mainContainer) {
-            const projectOptions = state.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-            
-            mainContainer.innerHTML = `
-                <div class="max-w-6xl mx-auto modal-animate w-full overflow-hidden">
-                    <div class="flex justify-between items-end mb-10">
-                        <div><h2 class="text-5xl font-black text-white tracking-tighter">HWID Keys</h2><p class="text-zinc-400 text-base mt-2 font-semibold tracking-wide">Generate and manage access keys for your locked projects.</p></div>
-                        <button onclick="clearInactiveKeys()" class="glass-btn text-zinc-300 hover:text-white px-6 py-3 rounded-xl flex items-center gap-3 text-sm font-extrabold shadow-md hover:-translate-y-1 tracking-wide"><i data-lucide="trash-2" class="w-5 h-5 text-red-400"></i> Clear Inactive</button>
-                    </div>
-                    <div class="glass-card rounded-[2rem] p-8 mb-10 hover:border-zinc-700 w-full relative overflow-hidden">
-                        <div class="absolute top-0 right-0 w-48 h-48 bg-brand-500/10 blur-[60px] rounded-full pointer-events-none"></div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 items-end relative z-10">
-                            <div class="lg:col-span-1"><label class="block text-xs font-black text-zinc-400 mb-2.5 uppercase tracking-widest">Project</label><select id="hwid-proj-select" class="w-full glass-input rounded-xl p-4 text-white focus:border-brand-500 outline-none shadow-inner font-bold" onchange="renderHWIDTable()">${projectOptions || '<option disabled selected>No projects created</option>'}</select></div>
-                            <div class="lg:col-span-2"><label class="block text-xs font-black text-zinc-400 mb-2.5 uppercase tracking-widest">Note / Discord ID</label><input type="text" id="hwid-note" class="w-full glass-input rounded-xl p-4 text-white focus:border-brand-500 outline-none shadow-inner font-bold" placeholder="e.g. buyer_discord"></div>
-                            <div class="lg:col-span-1"><label class="block text-xs font-black text-zinc-400 mb-2.5 uppercase tracking-widest">Days</label><input type="number" id="hwid-days" value="30" class="w-full glass-input rounded-xl p-4 text-white focus:border-brand-500 outline-none shadow-inner font-bold"></div>
-                            <div class="lg:col-span-1"><label class="block text-xs font-black text-zinc-400 mb-2.5 uppercase tracking-widest">Amount</label><input type="number" id="hwid-amount" value="1" min="1" max="1000" class="w-full glass-input rounded-xl p-4 text-white focus:border-brand-500 outline-none shadow-inner font-bold"></div>
-                            <div class="lg:col-span-5 mt-3"><button onclick="generateProjectHWIDKey()" class="gradient-btn text-white px-6 py-4 rounded-xl text-sm font-extrabold w-full hover:-translate-y-1 tracking-wide" ${state.projects.length === 0 ? 'disabled' : ''}>Create Key(s)</button></div>
-                        </div>
-                    </div>
-                    <div class="glass-card rounded-[2rem] hover:border-zinc-700 w-full overflow-hidden">
-                        <div class="overflow-x-auto w-full max-w-full">
-                            <table class="w-full text-left text-sm whitespace-nowrap min-w-[800px] border-separate border-spacing-0">
-                                <thead class="bg-black/40 text-zinc-400 backdrop-blur-md">
-                                    <tr><th class="p-6 font-black uppercase tracking-widest text-xs border-b border-white/5">Script Key</th><th class="p-6 font-black uppercase tracking-widest text-xs border-b border-white/5">Note</th><th class="p-6 font-black uppercase tracking-widest text-xs border-b border-white/5">Status</th><th class="p-6 font-black uppercase tracking-widest text-xs border-b border-white/5">Expires</th><th class="p-6 font-black uppercase tracking-widest text-xs text-right border-b border-white/5">Actions</th></tr>
-                                </thead>
-                                <tbody id="hwid-table-body" class="bg-transparent"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            `;
-            if (state.projects.length > 0) renderHWIDTable();
-        }
-
-        function renderHWIDTable() {
-            const projId = document.getElementById('hwid-proj-select').value;
-            const project = state.projects.find(p => p.id === projId);
-            const tbody = document.getElementById('hwid-table-body');
-            if(!tbody) return;
-
-            if (!project || !project.hwidKeys || project.hwidKeys.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="p-12 text-center text-zinc-500 font-bold text-base">No HWID keys generated for this project.</td></tr>`;
-                return;
-            }
-
-            tbody.innerHTML = project.hwidKeys.map(k => {
-                const daysLeft = Math.max(0, Math.ceil((k.expiresAt - Date.now()) / (1000 * 60 * 60 * 24)));
-                const hwidStatus = k.hwid ? `<span class="px-3 py-1.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)] tracking-widest">LOCKED</span>` : `<span class="px-3 py-1.5 rounded-lg text-[10px] font-black bg-white/10 text-zinc-300 border border-white/20 tracking-widest">UNUSED</span>`;
-                const expiredStyle = daysLeft === 0 ? "text-red-400 font-black" : "text-emerald-400 font-bold";
-                
-                return `
-                <tr class="hover:bg-white/[0.03] transition-colors border-b border-white/5">
-                    <td class="p-6 border-b border-white/5"><div class="flex items-center gap-4"><code class="font-mono text-zinc-200 bg-black/60 px-4 py-2.5 rounded-xl border border-white/10 text-xs shadow-inner font-bold tracking-wide">${k.key}</code><button onclick="copyToClipboard('${k.key}', 'HWID Key Copied!')" class="text-zinc-500 hover:text-white p-2 hover:bg-white/10 rounded-xl transition-colors"><i data-lucide="copy" class="w-5 h-5"></i></button></div></td>
-                    <td class="p-6 text-white font-bold tracking-wide border-b border-white/5">${k.note || '-'}</td>
-                    <td class="p-6 border-b border-white/5">${hwidStatus}</td>
-                    <td class="p-6 ${expiredStyle} tracking-wide border-b border-white/5">${daysLeft} Days</td>
-                    <td class="p-6 flex justify-end gap-3 border-b border-white/5">
-                        <button onclick="resetHWID('${projId}', '${k.key}')" class="px-5 py-2.5 glass-btn text-white rounded-xl text-xs font-extrabold shadow-sm tracking-wide">Reset</button>
-                        <button onclick="deleteHWIDKey('${projId}', '${k.key}')" class="px-5 py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-xl text-xs font-extrabold border border-red-500/30 backdrop-blur-md shadow-sm tracking-wide">Delete</button>
-                    </td>
-                </tr>`;
-            }).join('');
-            lucide.createIcons();
-        }
-
-        async function generateProjectHWIDKey() {
-            const projId = document.getElementById('hwid-proj-select').value;
-            const note = document.getElementById('hwid-note').value.trim();
-            const days = document.getElementById('hwid-days').value;
-            const amount = Math.min(1000, Math.max(1, parseInt(document.getElementById('hwid-amount').value) || 1));
-            
-            const project = state.projects.find(p => p.id === projId);
-            if (!project) return;
-            
-            if (!project.hwidKeys) project.hwidKeys = [];
-            const expiresAt = Date.now() + (parseInt(days) * 24 * 60 * 60 * 1000);
-            
-            for(let i=0; i<amount; i++) {
-                project.hwidKeys.push({ key: generateHWIDKey(), note: note, hwid: null, ip: null, lastReset: 0, expiresAt, roleRemoved: false });
-            }
-            
-            try {
-                await syncToServer(); showToast(`Generated ${amount} Key(s)!`);
-                document.getElementById('hwid-note').value = ''; renderHWIDTable();
-            } catch(e) { 
-                for(let i=0; i<amount; i++) project.hwidKeys.pop();
+                k.roleRemoved = true;
+                needsSave = true;
             }
         }
+    }
 
-        async function clearInactiveKeys() {
-            const projId = document.getElementById('hwid-proj-select').value;
-            const project = state.projects.find(p => p.id === projId);
-            if (!project || !project.hwidKeys) return;
-            
-            const initialLen = project.hwidKeys.length;
-            project.hwidKeys = project.hwidKeys.filter(k => {
-                const isUnused = !k.userId;
-                const isExpired = Date.now() > k.expiresAt;
-                return !isUnused && !isExpired; 
-            });
-            
-            if (project.hwidKeys.length === initialLen) return showToast('No inactive keys found.');
-            
+    for (let gw of db.giveaways) {
+        if (!gw.ended && Date.now() >= gw.endsAt) {
+            gw.ended = true;
+            needsSave = true;
+
+            const project = db.projects.find(p => p.id === gw.projectId);
+            if (!project) continue;
+
             try {
-                await syncToServer(); 
-                showToast(`Cleared ${initialLen - project.hwidKeys.length} inactive keys!`); 
-                renderHWIDTable(); 
-            } catch(e) { await loadFromServer(); }
-        }
+                const channel = await client.channels.fetch(gw.channelId).catch(() => null);
+                if (!channel) continue;
 
-        async function resetHWID(projId, keyStr) {
-            const project = state.projects.find(p => p.id === projId);
-            const k = project.hwidKeys.find(k => k.key === keyStr);
-            const cooldownMs = (project.hwidResetCooldown || 24) * 60 * 60 * 1000;
-            
-            if (Date.now() - k.lastReset < cooldownMs) {
-                const hoursLeft = Math.ceil((cooldownMs - (Date.now() - k.lastReset)) / 3600000);
-                return showToast(`Cooldown active. Try again in ${hoursLeft} hours.`, 'error');
-            }
-            
-            const oldHwid = k.hwid; const oldIp = k.ip; const oldReset = k.lastReset;
-            k.hwid = null; k.ip = null; k.lastReset = Date.now();
-            try { await syncToServer(); showToast('HWID Reset successfully'); renderHWIDTable(); } 
-            catch(e) { k.hwid = oldHwid; k.ip = oldIp; k.lastReset = oldReset; renderHWIDTable(); }
-        }
+                if (!gw.participants || gw.participants.length === 0) {
+                    const failEmbed = new EmbedBuilder()
+                        .setTitle(`${EMOJI_TADA} **Giveaway Ended** ${EMOJI_TADA}`)
+                        .setColor(0x3f3f46)
+                        .setDescription(`Nobody entered the giveaway for **${project.name}**. ${EMOJI_SAD}`);
+                    await channel.send({ embeds: [failEmbed] }).catch(() => {});
+                } else {
+                    const shuffled = gw.participants.sort(() => 0.5 - Math.random());
+                    const winners = shuffled.slice(0, gw.winnersCount);
 
-        async function deleteHWIDKey(projId, keyStr) {
-            if(!confirm("Delete this key? User will lose script access instantly.")) return;
-            const project = state.projects.find(p => p.id === projId);
-            const kIdx = project.hwidKeys.findIndex(k => k.key === keyStr);
-            const kStore = project.hwidKeys[kIdx];
-            project.hwidKeys.splice(kIdx, 1);
-            try { await syncToServer(); showToast('Key deleted'); renderHWIDTable(); } 
-            catch(e) { project.hwidKeys.splice(kIdx, 0, kStore); renderHWIDTable(); }
-        }
-
-        async function fetchAdminKeys() {
-            try {
-                const res = await fetch('/api/admin/keys', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ discordId: state.user.id })
-                });
-                const data = await res.json();
-                state.adminKeys = data.keys || {};
-                renderRegisterTable();
-            } catch(e) {}
-        }
-
-        function renderRegister(mainContainer) {
-            mainContainer.innerHTML = `
-                <div class="max-w-6xl mx-auto modal-animate w-full overflow-hidden">
-                    <div class="flex justify-between items-end mb-10">
-                        <div><h2 class="text-5xl font-black text-white tracking-tighter">Key Management</h2><p class="text-zinc-400 text-base mt-2 font-semibold tracking-wide">Admin control over user access keys.</p></div>
-                        <div class="flex gap-4">
-                            <input type="number" id="input-admin-days" value="30" class="w-28 glass-input rounded-xl p-4 text-white focus:border-brand-500 outline-none text-base font-bold shadow-inner text-center" placeholder="Days">
-                            <button onclick="generateApiKey()" class="gradient-btn text-white px-7 py-4 rounded-xl text-sm font-extrabold min-w-[160px] flex items-center justify-center hover:-translate-y-1 tracking-wide">Generate Key</button>
-                        </div>
-                    </div>
+                    const winnerMentions = [];
+                    const expiresAt = Date.now() + (gw.keyDays * 24 * 60 * 60 * 1000);
                     
-                    <div id="admin-key-result" class="hidden mb-8 p-8 bg-brand-500/20 border border-brand-500/30 rounded-[2rem] flex items-center justify-between hover:-translate-y-1 backdrop-blur-2xl shadow-[0_15px_40px_0_rgba(0,0,0,0.3)] transition-all">
-                        <div><p class="text-xs text-brand-300 font-black uppercase mb-3 tracking-widest">New Key Generated</p><code id="admin-new-key" class="text-white font-mono text-xl font-bold bg-black/50 px-5 py-3 rounded-xl border border-white/10 shadow-inner"></code></div>
-                        <button onclick="copyToClipboard(document.getElementById('admin-new-key').innerText, 'Key Copied!')" class="glass-btn text-white px-8 py-4 rounded-xl text-sm font-extrabold shadow-md tracking-wide">Copy</button>
-                    </div>
+                    for (let wId of winners) {
+                        winnerMentions.push(`<@${wId}>`);
+                        const newKey = crypto.randomBytes(12).toString('hex').toLowerCase();
+                        
+                        if (!project.hwidKeys) project.hwidKeys = [];
+                        project.hwidKeys.push({
+                            key: newKey,
+                            note: "Giveaway Winner",
+                            createdAt: Date.now(),
+                            expiresAt: expiresAt,
+                            userId: wId,
+                            hwid: null,
+                            ip: null,
+                            roleRemoved: false
+                        });
 
-                    <div class="glass-card rounded-[2rem] w-full overflow-hidden">
-                        <div class="overflow-x-auto w-full max-w-full">
-                            <table class="w-full text-left text-sm whitespace-nowrap min-w-max border-separate border-spacing-0">
-                                <thead class="bg-black/40 text-zinc-400 backdrop-blur-md">
-                                    <tr><th class="p-6 font-black uppercase tracking-widest text-xs border-b border-white/5">API Key</th><th class="p-6 font-black uppercase tracking-widest text-xs border-b border-white/5">Claimed By</th><th class="p-6 font-black uppercase tracking-widest text-xs border-b border-white/5">Expires In</th><th class="p-6 font-black uppercase tracking-widest text-xs text-right border-b border-white/5">Actions</th></tr>
-                                </thead>
-                                <tbody id="keys-table-body" class="bg-transparent">
-                                    <tr><td colspan="4" class="p-12 text-center text-zinc-500 font-bold text-base">Loading keys...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            `;
-            fetchAdminKeys();
-        }
+                        if (project.discordConfig && project.discordConfig.roleId) {
+                            try {
+                                const guild = await client.guilds.fetch(gw.guildId);
+                                const member = await guild.members.fetch(wId);
+                                await member.roles.add(project.discordConfig.roleId);
+                            } catch(e) {}
+                        }
 
-        function renderRegisterTable() {
-            const tbody = document.getElementById('keys-table-body');
-            if(!tbody) return;
-            const keys = Object.entries(state.adminKeys);
-            
-            if (keys.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="p-12 text-center text-zinc-500 font-bold text-base">No API keys generated yet.</td></tr>`;
-                return;
-            }
+                        try {
+                            const user = await client.users.fetch(wId);
+                            const loaderCode = `getgenv().script_key = "${newKey}"\nloadstring(game:HttpGet("${HOST_URL}/loader/${project.id}"))()`;
+                            const dmEmbed = new EmbedBuilder()
+                                .setTitle(`${EMOJI_TADA} You won the Giveaway!`)
+                                .setColor(0x4F6CEE)
+                                .setDescription(`Congratulations! You won a **${gw.keyDays} Day** key for **${project.name}**!\n\nYour key has automatically been redeemed to your Discord account, and you have been given the customer role.\n\n**Your Script Loader:**\n\`\`\`lua\n${loaderCode}\n\`\`\``);
+                            await user.send({ embeds: [dmEmbed] }).catch(() => {});
+                        } catch(e) {}
+                    }
 
-            tbody.innerHTML = keys.map(([keyStr, data]) => {
-                const daysLeft = Math.max(0, Math.ceil((data.expiresAt - Date.now()) / (1000 * 60 * 60 * 24)));
-                const userDisplay = data.userId ? `<div class="flex items-center gap-4"><div class="w-10 h-10 rounded-full bg-brand-500/20 flex items-center justify-center text-xs text-brand-400 font-black uppercase border border-brand-500/30 shadow-[0_0_10px_rgba(79,70,229,0.2)]">${data.username.charAt(0)}</div><div><p class="text-white font-extrabold tracking-wide">${data.username}</p><p class="text-[10px] font-bold tracking-widest text-zinc-500 mt-0.5">${data.userId}</p></div></div>` : `<span class="text-zinc-500 italic font-bold">Unclaimed</span>`;
-                const expiredStyle = daysLeft === 0 ? "text-red-400 font-black" : "text-emerald-400 font-bold";
-                
-                return `
-                <tr class="hover:bg-white/[0.03] transition-colors border-b border-white/5">
-                    <td class="p-6 font-mono text-zinc-200 text-xs bg-black/60 rounded-xl border border-white/10 inline-block mt-4 ml-6 shadow-inner px-4 py-2.5 font-bold tracking-wide">${keyStr}</td>
-                    <td class="p-6 border-b border-white/5">${userDisplay}</td>
-                    <td class="p-6 ${expiredStyle} tracking-wide border-b border-white/5">${daysLeft} Days</td>
-                    <td class="p-6 flex justify-end gap-3 border-b border-white/5">
-                        <button onclick="extendKey('${keyStr}')" class="px-5 py-2.5 glass-btn text-white rounded-xl text-xs font-extrabold shadow-sm tracking-wide">Extend</button>
-                        <button onclick="revokeKey('${keyStr}')" class="px-5 py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-xl text-xs font-extrabold border border-red-500/30 backdrop-blur-md shadow-sm tracking-wide">Revoke</button>
-                    </td>
-                </tr>`;
-            }).join('');
-        }
-
-        async function generateApiKey() {
-            const days = document.getElementById('input-admin-days').value;
-            try {
-                const res = await fetch('/api/admin/generate-key', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ discordId: state.user.id, days: days })
-                });
-                const data = await res.json();
-                if (data.key) {
-                    document.getElementById('admin-key-result').classList.remove('hidden');
-                    document.getElementById('admin-new-key').innerText = data.key;
-                    showToast('New API Key generated!');
-                    fetchAdminKeys();
-                } else { showToast(data.error || 'Failed to generate key', 'error'); }
-            } catch (err) { showToast('Server error', 'error'); }
-        }
-
-        async function extendKey(keyStr) {
-            const days = prompt("How many days to extend?", "30");
-            if(!days) return;
-            try {
-                await fetch('/api/admin/extend-key', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ targetKey: keyStr, days: days, discordId: state.user.id })
-                });
-                showToast('Key extended');
-                fetchAdminKeys();
-            } catch(e) {}
-        }
-
-        async function revokeKey(keyStr) {
-            if(!confirm("Revoke this key instantly?")) return;
-            try {
-                await fetch('/api/admin/revoke-key', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ targetKey: keyStr, discordId: state.user.id })
-                });
-                showToast('Key revoked', 'error');
-                fetchAdminKeys();
-            } catch(e) {}
-        }
-
-        function renderSettings(mainContainer) {
-            mainContainer.innerHTML = `
-                <div class="max-w-3xl modal-animate w-full">
-                    <h2 class="text-5xl font-black text-white tracking-tighter mb-10">Settings</h2>
+                    const winEmbed = new EmbedBuilder()
+                        .setTitle(`${EMOJI_TADA} **Giveaway Winners!** ${EMOJI_TADA}`)
+                        .setColor(0x10b981)
+                        .setDescription(`**Prize:** ${gw.winnersCount}x Key(s) for ${project.name}\n**Winners:** ${winnerMentions.join(', ')}\n\n*Winners have been given the customer role and DMed their scripts automatically!*`);
                     
-                    <div class="glass-card rounded-[2rem] p-10 hover:border-white/20 w-full transition-all relative overflow-hidden">
-                        <div class="absolute top-0 right-0 w-48 h-48 bg-brand-500/10 blur-[50px] rounded-full pointer-events-none"></div>
-                        <h3 class="text-xl font-extrabold text-white flex items-center gap-3 mb-8 relative z-10"><i data-lucide="key" class="w-6 h-6 text-brand-400"></i> Access Configuration</h3>
-                        <div class="relative z-10">
-                            <label class="block text-xs font-black text-zinc-400 mb-3 uppercase tracking-widest">Your API Key ${state.user.isAdmin ? '(Not needed for Admins)' : ''}</label>
-                            <div class="flex gap-4 flex-wrap sm:flex-nowrap">
-                                <input type="password" id="input-user-apikey" value="${state.apiKey}" class="flex-1 min-w-[200px] w-full glass-input rounded-2xl p-5 text-white focus:border-brand-500 outline-none font-mono placeholder:text-zinc-600 shadow-inner font-bold text-lg" placeholder="xxxxxxxxxxxx" ${state.user.isAdmin ? 'disabled' : ''}>
-                                <button onclick="saveApiKey()" class="gradient-btn text-white px-10 py-5 sm:py-0 rounded-2xl text-sm font-extrabold w-full sm:w-auto hover:-translate-y-1 tracking-wide" ${state.user.isAdmin ? 'hidden' : ''}>Save & Link</button>
-                            </div>
-                            <p class="text-sm text-zinc-500 mt-4 font-semibold tracking-wide">API Keys are required to upload or edit scripts. Contact an Admin if you need a key.</p>
-                        </div>
-                    </div>
+                    await channel.send({ embeds: [winEmbed] }).catch(() => {});
+                }
 
-                    <div class="mt-12 pt-10 border-t border-white/5">
-                        <h3 class="text-xl font-extrabold text-red-400 flex items-center gap-3 mb-6"><i data-lucide="shield-alert" class="w-6 h-6"></i> Account Actions</h3>
-                        <button onclick="openLogoutModal()" class="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-8 py-4 rounded-2xl text-sm font-extrabold border border-red-500/30 flex items-center gap-3 hover:-translate-y-1 backdrop-blur-md shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-all tracking-wide">
-                            <i data-lucide="log-out" class="w-5 h-5"></i> Sign Out / Switch Account
-                        </button>
-                    </div>
-                </div>
-            `;
+                try {
+                    const msg = await channel.messages.fetch(gw.messageId);
+                    const endedRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('ended_btn').setLabel('Giveaway Ended').setStyle(ButtonStyle.Secondary).setDisabled(true)
+                    );
+                    await msg.edit({ components: [endedRow] });
+                } catch(e) {}
+
+            } catch (e) {}
         }
+    }
 
-        function toggleProject(id) {
-            const proj = state.projects.find(p => p.id === id);
-            if (proj) proj.expanded = !proj.expanded;
-            renderApp();
-        }
+    if (needsSave) writeDB(db);
+}, 15 * 1000);
 
-        function renderProjectsList() {
-            if (state.projects.length === 0) return `<div class="text-center py-32 border-2 border-dashed border-white/10 rounded-[2.5rem] glass-card w-full"><h3 class="text-xl font-extrabold text-zinc-400 tracking-wide">No projects yet</h3></div>`;
+const buildProjectSelect = (customId, interaction, db) => {
+    const isGlobalAdmin = ADMIN_IDS.includes(interaction.user.id);
+    const userProjects = isGlobalAdmin ? db.projects : db.projects.filter(p => p.ownerId === interaction.user.id);
+    
+    if (userProjects.length === 0) return null;
 
-            return state.projects.map(p => `
-                <div class="glass-card rounded-[2.5rem] overflow-hidden hover:bg-white/[0.04] ${p.expanded ? 'ring-2 ring-brand-500/40 shadow-[0_15px_50px_rgba(79,70,229,0.15)]' : ''} w-full block transition-all duration-500">
-                    <div class="flex items-center justify-between p-8 sm:p-10 cursor-pointer hover:bg-white/[0.02] transition-colors relative overflow-hidden" onclick="toggleProject('${p.id}')">
-                        <div class="absolute top-0 right-0 w-64 h-64 bg-brand-500/5 blur-[60px] rounded-full pointer-events-none transition-opacity ${p.expanded ? 'opacity-100' : 'opacity-0'}"></div>
-                        <div class="flex items-center gap-6 relative z-10">
-                            <div class="w-16 h-16 rounded-[1.25rem] bg-brand-500/20 border border-brand-500/30 flex items-center justify-center transition-transform duration-700 ${p.expanded ? 'scale-110 rotate-3 shadow-[0_0_20px_rgba(79,70,229,0.4)]' : ''}"><i data-lucide="box" class="text-brand-400 w-8 h-8"></i></div>
-                            <div>
-                                <h3 class="text-3xl font-black text-white tracking-tight">${p.name}</h3>
-                                <p class="text-xs text-zinc-500 font-mono mt-1.5 font-bold tracking-widest uppercase">ID: ${p.id.substring(0, 16)}...</p>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-5 relative z-10">
-                            <button onclick="event.stopPropagation(); openProjectSettings('${p.id}')" class="p-3.5 text-zinc-400 hover:text-white glass-btn rounded-xl transition-all hover:scale-110 shadow-sm" title="Settings"><i data-lucide="settings" class="w-6 h-6"></i></button>
-                            <div class="w-px h-10 bg-white/10 mx-1"></div>
-                            <div class="p-3 bg-white/5 rounded-full"><i data-lucide="${p.expanded ? 'chevron-up' : 'chevron-down'}" class="text-zinc-300 w-6 h-6 transition-transform duration-500"></i></div>
-                        </div>
-                    </div>
-                    ${p.expanded ? `
-                    <div class="p-8 sm:p-10 border-t border-white/5 bg-black/40 modal-animate w-full overflow-x-auto shadow-inner relative z-10">
-                        <div class="flex gap-4 mb-10 flex-wrap sm:flex-nowrap">
-                            <button onclick="openAddScriptModal('${p.id}')" class="glass-btn text-white px-7 py-4 rounded-2xl flex items-center justify-center gap-3 text-sm font-extrabold w-full sm:w-auto hover:-translate-y-1 shadow-lg tracking-wide"><i data-lucide="file-plus-2" class="w-5 h-5 text-brand-400"></i> ADD SCRIPT</button>
-                            <button onclick="openCustomLoaderModal('${p.id}')" class="glass-btn text-white px-7 py-4 rounded-2xl flex items-center justify-center gap-3 text-sm font-extrabold w-full sm:w-auto hover:-translate-y-1 shadow-lg tracking-wide"><i data-lucide="code-2" class="w-5 h-5 text-zinc-400"></i> CUSTOM LOADER</button>
-                        </div>
-                        <div class="space-y-5 w-full min-w-[600px]">${renderScripts(p.scripts, p.id)}</div>
-                    </div>` : ''}
-                </div>
-            `).join('');
-        }
+    const options = userProjects.map(p => ({
+        label: p.name,
+        description: `Project ID: ${p.id.substring(0, 20)}...`,
+        value: p.id
+    })).slice(0, 25);
 
-        function renderScripts(scripts, projectId) {
-            if (scripts.length === 0) return `<div class="text-base text-zinc-500 font-bold text-center py-12 bg-black/60 rounded-3xl border border-white/5 w-full shadow-inner tracking-wide">No scripts added yet.</div>`;
-            return scripts.map(s => `
-                <div class="group flex flex-col sm:flex-row sm:items-center justify-between p-6 bg-white/[0.02] border border-white/5 rounded-[1.5rem] hover:bg-white/[0.04] hover:border-brand-500/40 transition-all duration-300 hover:translate-x-2 shadow-[0_5px_15px_rgba(0,0,0,0.2)] w-full block">
-                    <div class="flex items-center gap-6 mb-5 sm:mb-0">
-                        <button onclick="toggleScriptStatusDirect('${projectId}', '${s.id}')" class="relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] ${s.status === 'Active' ? 'border-[#272a54] bg-black/80' : 'border-white/10 bg-black/80'} shadow-inner transition-colors duration-300" title="Toggle Active">
-                            <span class="pointer-events-none absolute left-[3px] inline-block h-5 w-5 transform rounded-full transition-all duration-300 ease-in-out ${s.status === 'Active' ? 'translate-x-[22px] bg-[#515dfa] shadow-[0_0_12px_#515dfa]' : 'translate-x-0 bg-zinc-500'}"></span>
-                        </button>
-                        <div>
-                            <div class="flex items-center gap-4">
-                                <h4 class="font-black text-white text-xl tracking-tight ${s.status !== 'Active' ? 'opacity-50 line-through text-zinc-400' : ''}">${s.name}</h4>
-                                <span class="px-3 py-1.5 rounded-lg text-[10px] font-black bg-brand-500/20 text-brand-300 border border-brand-500/30 shadow-sm tracking-widest uppercase">${s.version}</span>
-                            </div>
-                            <div class="flex items-center gap-5 mt-2.5 text-xs text-zinc-400 font-extrabold tracking-widest uppercase">
-                                <span class="flex items-center gap-2 bg-black/60 px-3.5 py-2 rounded-xl border border-white/10 shadow-inner" title="Game ID"><i data-lucide="gamepad-2" class="w-4 h-4 text-zinc-500"></i> ${s.gameId || 'Universal'}</span>
-                                <span class="flex items-center gap-2 bg-black/60 px-3.5 py-2 rounded-xl border border-white/10 shadow-inner" title="Total Executions"><i data-lucide="activity" class="w-4 h-4 text-brand-500 drop-shadow-[0_0_5px_rgba(79,70,229,0.5)]"></i> ${s.executions || 0}</span>
-                                <span class="flex items-center gap-2 text-zinc-500 ml-1"><i data-lucide="calendar" class="w-4 h-4"></i> ${s.date}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3 opacity-100 sm:opacity-50 group-hover:opacity-100 transition-opacity flex-wrap sm:flex-nowrap">
-                        <button onclick="openEditScriptModal('${projectId}', '${s.id}')" class="px-5 py-3 text-xs font-black tracking-widest text-zinc-300 hover:text-brand-300 glass-btn hover:bg-brand-500/20 hover:border-brand-500/30 rounded-xl flex items-center gap-2 shadow-sm uppercase"><i data-lucide="edit-3" class="w-4 h-4"></i> Edit</button>
-                        <button onclick="copyScriptLoader('${projectId}', '${s.id}')" class="px-5 py-3 text-xs font-black tracking-widest text-zinc-300 hover:text-emerald-300 glass-btn hover:bg-emerald-500/20 hover:border-emerald-500/30 rounded-xl flex items-center gap-2 shadow-sm uppercase"><i data-lucide="copy" class="w-4 h-4"></i> Copy</button>
-                        <button onclick="deleteScript('${projectId}', '${s.id}')" class="px-5 py-3 text-xs font-black tracking-widest text-zinc-300 hover:text-red-300 glass-btn hover:bg-red-500/20 hover:border-red-500/30 rounded-xl flex items-center gap-2 shadow-sm uppercase"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete</button>
-                    </div>
-                </div>
-            `).join('');
-        }
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(customId)
+        .setPlaceholder('Select a project')
+        .addOptions(options);
 
-        function closeModal() { document.getElementById('modal-container').innerHTML = ''; }
+    return new ActionRowBuilder().addComponents(selectMenu);
+};
 
-        function openCreateProjectModal() {
-            document.getElementById('modal-container').innerHTML = `
-            <div class="fixed inset-0 bg-black/60 backdrop-blur-xl flex items-center justify-center z-50 p-4">
-                <div class="glass-card p-10 rounded-[2.5rem] w-full max-w-md shadow-[0_20px_50px_0_rgba(0,0,0,0.5)] modal-animate relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-40 h-40 bg-brand-500/10 blur-[50px] rounded-full pointer-events-none"></div>
-                    <h3 class="text-3xl font-black text-white mb-8 flex items-center gap-4 relative z-10 tracking-tight"><div class="p-3 bg-brand-500/20 rounded-2xl border border-brand-500/30 shadow-[0_0_20px_rgba(79,70,229,0.3)]"><i data-lucide="folder-plus" class="text-brand-400 w-6 h-6"></i></div> Create Project</h3>
-                    <div class="space-y-6 relative z-10">
-                        <div>
-                            <label class="block text-xs font-black text-zinc-400 mb-3 uppercase tracking-widest">Custom Project Name</label>
-                            <input type="text" id="input-cp-name" class="w-full glass-input rounded-2xl p-5 text-white focus:border-brand-500 outline-none shadow-inner text-base font-bold">
-                        </div>
-                    </div>
-                    <div class="flex justify-end gap-4 mt-10 pt-8 border-t border-white/10 relative z-10">
-                        <button onclick="closeModal()" class="px-7 py-4 text-sm font-extrabold text-zinc-300 hover:text-white glass-btn rounded-xl tracking-wide">Cancel</button>
-                        <button onclick="submitCreateProject()" class="gradient-btn text-white px-9 py-4 rounded-xl text-sm font-extrabold hover:-translate-y-1 tracking-wide">Create</button>
-                    </div>
-                </div>
-            </div>`;
-            lucide.createIcons();
-            setTimeout(() => {
-                var el = document.getElementById('input-cp-name');
-                if (el) el.focus();
-            }, 100);
-        }
+client.on('interactionCreate', async interaction => {
+    try {
+        if (interaction.isCommand()) {
+            if (!interaction.guild) return interaction.reply({ content: "Commands must be used in a server.", ephemeral: true });
 
-        async function submitCreateProject() {
-            const name = document.getElementById('input-cp-name').value.trim();
-            if (!name) return showToast('Please enter a project name', 'error');
-            const id = await generateSHA256(name);
-            state.projects.push({ id: id, name: name, expanded: true, loaderCode: "", webhookUrl: "", freeMode: true, hwidResetCooldown: 24, hwidKeys: [], scripts: [] });
-            try { await syncToServer(); closeModal(); showToast('Project created'); renderApp(); } catch (err) { state.projects.pop(); }
-        }
+            const db = readDB();
 
-        function openProjectSettings(projectId) {
-            const project = state.projects.find(p => p.id === projectId);
-            document.getElementById('modal-container').innerHTML = `
-            <div class="fixed inset-0 bg-black/60 backdrop-blur-xl flex items-center justify-center z-50 p-4">
-                <div class="glass-card p-10 rounded-[2.5rem] w-full max-w-lg shadow-[0_20px_50px_0_rgba(0,0,0,0.5)] modal-animate relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-40 h-40 bg-zinc-500/10 blur-[50px] rounded-full pointer-events-none"></div>
-                    <h3 class="text-3xl font-black text-white mb-8 flex items-center gap-4 relative z-10 tracking-tight"><div class="p-3 bg-white/10 rounded-2xl border border-white/10 shadow-sm"><i data-lucide="settings-2" class="text-white w-6 h-6"></i></div> Project Settings</h3>
-                    <div class="space-y-6 relative z-10">
-                        <div><label class="block text-xs font-black text-zinc-400 mb-3 uppercase tracking-widest">Change Project Name</label><input type="text" id="input-ps-name" value="${project.name}" class="w-full glass-input rounded-2xl p-4 text-white focus:border-brand-500 outline-none shadow-inner font-bold text-base"></div>
-                        <div><label class="block text-xs font-black text-brand-400 mb-3 uppercase tracking-widest flex items-center gap-2"><i data-lucide="bell-ring" class="w-4 h-4"></i> Execution Webhook URL</label><input type="text" id="input-ps-webhook" value="${project.webhookUrl || ''}" placeholder="https://discord.com/api/webhooks/..." class="w-full glass-input border-brand-500/30 rounded-2xl p-4 text-white focus:border-brand-500 outline-none text-sm shadow-inner font-medium"></div>
-                        <div class="flex items-center justify-between bg-black/50 p-5 rounded-2xl border border-white/10 shadow-inner">
-                            <div><p class="text-base font-extrabold text-white tracking-wide">Free Mode</p><p class="text-xs text-zinc-500 mt-1.5 font-bold tracking-wide">Allow execution without a Key</p></div>
-                            <button id="toggle-freemode" onclick="toggleFreeMode()" class="relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] ${project.freeMode !== false ? 'border-[#272a54] bg-black/80' : 'border-white/10 bg-black/80'} shadow-inner transition-colors duration-300"><span id="toggle-freemode-thumb" class="pointer-events-none absolute left-[3px] inline-block h-5 w-5 transform rounded-full transition-all duration-300 ${project.freeMode !== false ? 'translate-x-[22px] bg-[#515dfa] shadow-[0_0_12px_#515dfa]' : 'translate-x-0 bg-zinc-500'}"></span></button>
-                        </div>
-                        <div><label class="block text-xs font-black text-zinc-400 mb-3 uppercase tracking-widest">HWID Reset Cooldown (Hours)</label><input type="number" id="input-ps-cooldown" value="${project.hwidResetCooldown || 24}" class="w-full glass-input rounded-2xl p-4 text-white focus:border-brand-500 outline-none shadow-inner font-bold text-base"></div>
-                    </div>
-                    <div class="flex items-center justify-between mt-10 pt-8 border-t border-white/10 flex-wrap sm:flex-nowrap gap-5 relative z-10">
-                        <button onclick="deleteProject('${projectId}')" class="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-6 py-4 rounded-xl flex items-center justify-center gap-3 text-sm font-extrabold border border-red-500/30 w-full sm:w-auto hover:-translate-y-1 backdrop-blur-md shadow-lg tracking-wide"><i data-lucide="trash-2" class="w-5 h-5"></i> Delete</button>
-                        <div class="flex gap-4 w-full sm:w-auto">
-                            <button onclick="closeModal()" class="flex-1 px-6 py-4 text-sm font-extrabold text-zinc-300 hover:text-white glass-btn rounded-xl tracking-wide">Cancel</button>
-                            <button onclick="saveProjectSettings('${projectId}')" class="flex-1 gradient-btn text-white px-8 py-4 rounded-xl text-sm font-extrabold hover:-translate-y-1 tracking-wide">Save</button>
-                        </div>
-                    </div>
-                </div>
-            </div>`;
-            window.tempFreeMode = project.freeMode !== false;
-            lucide.createIcons();
-        }
+            if (interaction.commandName === 'login') {
+                const apiKey = interaction.options.getString('api_key');
+                if (!db.apiKeys[apiKey]) {
+                    const errEmbed = new EmbedBuilder().setColor(0xEF4444).setDescription(`${EMOJI_CROSS} Invalid API Key.`);
+                    return interaction.reply({ embeds: [errEmbed], ephemeral: true });
+                }
+                if (Date.now() > db.apiKeys[apiKey].expiresAt) {
+                    const errEmbed = new EmbedBuilder().setColor(0xEF4444).setDescription(`${EMOJI_CROSS} API Key is expired.`);
+                    return interaction.reply({ embeds: [errEmbed], ephemeral: true });
+                }
 
-        function toggleFreeMode() {
-            window.tempFreeMode = !window.tempFreeMode;
-            const btn = document.getElementById('toggle-freemode');
-            const thumb = document.getElementById('toggle-freemode-thumb');
-            if(window.tempFreeMode) {
-                btn.className = "relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] border-[#272a54] bg-black/80 shadow-inner transition-colors duration-300";
-                thumb.className = "pointer-events-none absolute left-[3px] inline-block h-5 w-5 transform rounded-full transition-all duration-300 translate-x-[22px] bg-[#515dfa] shadow-[0_0_12px_#515dfa]";
-            } else {
-                btn.className = "relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] border-white/10 bg-black/80 shadow-inner transition-colors duration-300";
-                thumb.className = "pointer-events-none absolute left-[3px] inline-block h-5 w-5 transform rounded-full transition-all duration-300 translate-x-0 bg-zinc-500";
+                db.apiKeys[apiKey].userId = interaction.user.id;
+                db.apiKeys[apiKey].username = interaction.user.username;
+                writeDB(db);
+
+                const okEmbed = new EmbedBuilder()
+                    .setColor(0x10B981)
+                    .setTitle(`${EMOJI_CHECK} Successfully Logged In`)
+                    .setDescription("Your Discord account is now securely linked to this API Key. You can now use bot commands.");
+                return interaction.reply({ embeds: [okEmbed], ephemeral: true });
             }
-        }
 
-        async function saveProjectSettings(projectId) {
-            const name = document.getElementById('input-ps-name').value.trim();
-            const webhook = document.getElementById('input-ps-webhook').value.trim();
-            const cooldown = document.getElementById('input-ps-cooldown').value;
-            if (!name) return showToast('Project name cannot be empty', 'error');
-            const project = state.projects.find(p => p.id === projectId);
-            const oldName = project.name; const oldWebhook = project.webhookUrl; const oldMode = project.freeMode; const oldCooldown = project.hwidResetCooldown;
-            project.name = name; project.webhookUrl = webhook; project.freeMode = window.tempFreeMode; project.hwidResetCooldown = parseInt(cooldown);
-            try { await syncToServer(); closeModal(); showToast('Project updated'); renderApp(); } 
-            catch (err) { project.name = oldName; project.webhookUrl = oldWebhook; project.freeMode = oldMode; project.hwidResetCooldown = oldCooldown; }
-        }
-
-        async function deleteProject(projectId) {
-            const pIndex = state.projects.findIndex(p => p.id === projectId);
-            const pStore = state.projects[pIndex];
-            state.projects.splice(pIndex, 1);
-            try { await syncToServer(); closeModal(); showToast('Project deleted'); renderApp(); } 
-            catch (err) { state.projects.splice(pIndex, 0, pStore); }
-        }
-
-        function openAddScriptModal(projectId) {
-            state.draftScript = { projectId: projectId, file: null, code: null };
-            document.getElementById('modal-container').innerHTML = `
-            <div class="fixed inset-0 bg-black/60 backdrop-blur-xl flex items-center justify-center z-50 p-4 overflow-y-auto">
-                <div class="glass-card p-10 rounded-[2.5rem] w-full max-w-lg shadow-[0_20px_50px_0_rgba(0,0,0,0.5)] modal-animate my-10 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-40 h-40 bg-brand-500/10 blur-[50px] rounded-full pointer-events-none"></div>
-                    <h3 class="text-3xl font-black text-white mb-8 flex items-center gap-4 relative z-10 tracking-tight"><div class="p-3 bg-brand-500/20 rounded-2xl border border-brand-500/30 shadow-[0_0_20px_rgba(79,70,229,0.3)]"><i data-lucide="file-code" class="text-brand-400 w-6 h-6"></i></div> Add New Script</h3>
-                    <div class="space-y-6 relative z-10">
-                        <div><label class="block text-xs font-black text-zinc-400 mb-3 uppercase tracking-widest">Custom Script Name</label><input type="text" id="input-as-name" class="w-full glass-input rounded-2xl p-4 text-white focus:border-brand-500 outline-none backdrop-blur-md shadow-inner font-bold text-base"></div>
-                        <div><label class="block text-xs font-black text-zinc-400 mb-3 uppercase tracking-widest">Roblox Game ID</label><input type="text" id="input-as-gameid" class="w-full glass-input rounded-2xl p-4 text-white focus:border-brand-500 outline-none font-mono backdrop-blur-md shadow-inner font-bold text-base" placeholder="Leave empty for Universal Script"></div>
-                        <div class="flex items-center justify-between bg-black/50 p-5 rounded-2xl border border-white/10 shadow-inner">
-                            <div><p class="text-base font-extrabold text-white tracking-wide">Allow Solara/Xeno</p><p class="text-xs text-zinc-500 mt-1.5 font-bold tracking-wide">Let these executors run the script</p></div>
-                            <button id="toggle-solaraxeno-add" onclick="toggleSolaraXenoAdd()" class="relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] border-white/10 bg-black/80 shadow-inner transition-colors duration-300"><span id="toggle-solaraxeno-add-thumb" class="pointer-events-none absolute left-[3px] inline-block h-5 w-5 transform rounded-full transition-all duration-300 translate-x-0 bg-zinc-500"></span></button>
-                        </div>
-                        <div><label class="block text-xs font-black text-zinc-400 mb-3 uppercase tracking-widest">Upload File</label>
-                            <div id="drop-zone" class="border-2 border-dashed border-white/20 rounded-3xl p-12 text-center bg-black/50 hover:bg-white/5 hover:border-brand-500/60 cursor-pointer relative transition-all shadow-inner backdrop-blur-md group"><input type="file" accept=".lua" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileSelect(event)"><div class="bg-white/10 border border-white/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5 shadow-[0_10px_25px_rgba(0,0,0,0.5)] group-hover:scale-110 transition-transform"><i data-lucide="upload-cloud" class="w-8 h-8 text-brand-400"></i></div><p class="text-base text-zinc-300 font-extrabold tracking-wide" id="drop-text">Drag & drop your file here</p></div>
-                        </div>
-                    </div>
-                    <div class="flex justify-end gap-4 mt-10 pt-8 border-t border-white/10 relative z-10"><button onclick="closeModal()" class="px-7 py-4 text-sm font-extrabold text-zinc-300 hover:text-white glass-btn rounded-xl tracking-wide">Cancel</button><button onclick="submitAddScript()" class="gradient-btn text-white px-9 py-4 rounded-xl text-sm font-extrabold hover:-translate-y-1 tracking-wide">Upload</button></div>
-                </div>
-            </div>`;
-            window.tempAllowSolaraAdd = false;
-            lucide.createIcons(); setupDragDrop();
-        }
-
-        function toggleSolaraXenoAdd() {
-            window.tempAllowSolaraAdd = !window.tempAllowSolaraAdd;
-            const btn = document.getElementById('toggle-solaraxeno-add');
-            const thumb = document.getElementById('toggle-solaraxeno-add-thumb');
-            if(window.tempAllowSolaraAdd) {
-                btn.className = "relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none bg-brand-500 transition-colors duration-200";
-                thumb.className = "pointer-events-none absolute left-[3px] inline-block h-5 w-5 transform rounded-full bg-white transition-transform duration-200 translate-x-[16px]";
-            } else {
-                btn.className = "relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none bg-zinc-700 transition-colors duration-200";
-                thumb.className = "pointer-events-none absolute left-[3px] inline-block h-5 w-5 transform rounded-full bg-white transition-transform duration-200 translate-x-0";
-            }
-        }
-
-        function handleFileSelect(e) { handleFiles(e.target.files); }
-        function handleFiles(files) {
-            if(files && files.length > 0) {
-                const file = files.item(0); 
-                if(file && file.name && file.name.toLowerCase().endsWith('.lua')) {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        state.draftScript.file = file; state.draftScript.code = event.target.result; 
-                        document.getElementById('drop-text').innerHTML = `<span class="text-emerald-300 font-black bg-emerald-500/20 px-5 py-2.5 rounded-xl border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.3)]">${file.name}</span>`;
-                    };
-                    reader.readAsText(file);
-                } else { showToast('Only .lua files are permitted', 'error'); }
-            }
-        }
-        function setupDragDrop() {
-            const dropZone = document.getElementById('drop-zone');
-            if(!dropZone) return;
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); }, false));
-            ['dragenter', 'dragover'].forEach(evt => dropZone.addEventListener(evt, () => dropZone.classList.add('border-brand-500', 'bg-brand-500/10'), false));
-            ['dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, () => dropZone.classList.remove('border-brand-500', 'bg-brand-500/10'), false));
-            dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
-        }
-
-        async function submitAddScript() {
-            const name = document.getElementById('input-as-name').value.trim();
-            const gameId = document.getElementById('input-as-gameid').value.trim();
-            const file = state.draftScript.file;
-            const code = state.draftScript.code;
-            const projectId = state.draftScript.projectId;
-            if(!name || !file || !code) return showToast('Please provide a name and select a valid Lua file.', 'error');
-
-            if (typeof luaparse !== 'undefined') {
-                try { luaparse.parse(code, { comments: false }); } 
-                catch (err) {
-                    const proceed = confirm(`Syntax Error:\n\n${err.message}\n\nUpload anyway?`);
-                    if (!proceed) return;
+            const isGlobalAdmin = ADMIN_IDS.includes(interaction.user.id);
+            const isServerOwner = interaction.user.id === interaction.guild.ownerId;
+            
+            let hasLinkedApiKey = false;
+            for (let k in db.apiKeys) {
+                if (db.apiKeys[k].userId === interaction.user.id && Date.now() < db.apiKeys[k].expiresAt) {
+                    hasLinkedApiKey = true;
+                    break;
                 }
             }
 
-            const project = state.projects.find(p => p.id === projectId);
-            const scriptId = await generateSHA256(name + gameId + "script");
+            let hasAdminRole = false;
+            if (interaction.guildId && db.guildConfigs && db.guildConfigs[interaction.guildId]) {
+                const adminRoleId = db.guildConfigs[interaction.guildId].adminRoleId;
+                if (adminRoleId) {
+                    try {
+                        const member = await interaction.guild.members.fetch(interaction.user.id);
+                        if (member.roles.cache.has(adminRoleId)) hasAdminRole = true;
+                    } catch(e){}
+                }
+            }
             
-            const newScript = { id: scriptId, name: name, gameId: gameId, status: 'Active', version: 'v0.0.1', date: getShortDate(), fileName: file.name, code: code, executions: 0, executionHistory: {}, allowSolaraXeno: window.tempAllowSolaraAdd };
-            project.scripts.push(newScript);
+            const isAuthorized = isGlobalAdmin || isServerOwner || (hasAdminRole && hasLinkedApiKey);
+
+            if (interaction.commandName === 'set_admin_role') {
+                if (!isGlobalAdmin && !isServerOwner) {
+                    const errEmbed = new EmbedBuilder().setColor(0xEF4444).setDescription(`${EMOJI_CROSS} Only the Server Owner or Global Admin can assign the Admin Role.`);
+                    return interaction.reply({ embeds: [errEmbed], ephemeral: true });
+                }
+                const modal = new ModalBuilder().setCustomId("modal_setadminrole").setTitle('Set Admin Role');
+                modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('roleId').setLabel("Discord Role ID").setStyle(TextInputStyle.Short).setRequired(true)));
+                return await interaction.showModal(modal).catch(console.error);
+            }
             
-            try { await syncToServer(); closeModal(); showToast('Script uploaded'); renderApp(); } 
-            catch(err) { project.scripts.pop(); }
-        }
+            if (!isAuthorized) {
+                const errEmbed = new EmbedBuilder()
+                    .setColor(0xEF4444)
+                    .setTitle(`${EMOJI_CROSS} Unauthorized`)
+                    .setDescription("You must be the **Server Owner**, or have the designated **Admin Role** with a valid linked **API Key** (`/login`) to use this command.");
+                return interaction.reply({ embeds: [errEmbed], ephemeral: true });
+            }
 
-        function openEditScriptModal(projectId, scriptId) {
-            const project = state.projects.find(p => p.id === projectId);
-            const script = project.scripts.find(s => s.id === scriptId);
-            window.tempAllowSolaraEdit = script.allowSolaraXeno === true;
-            document.getElementById('modal-container').innerHTML = `
-            <div class="fixed inset-0 bg-black/60 backdrop-blur-xl flex items-center justify-center z-50 p-4">
-                <div class="glass-card p-10 rounded-[2.5rem] w-full max-w-lg shadow-[0_20px_50px_0_rgba(0,0,0,0.5)] modal-animate relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-40 h-40 bg-brand-500/10 blur-[50px] rounded-full pointer-events-none"></div>
-                    <div class="flex justify-between items-center mb-8 relative z-10"><h3 class="text-3xl font-black text-white flex items-center gap-4 tracking-tight"><div class="p-3 bg-brand-500/20 rounded-2xl border border-brand-500/30 shadow-[0_0_20px_rgba(79,70,229,0.3)]"><i data-lucide="edit" class="text-brand-400 w-6 h-6"></i></div> Edit Script</h3><span class="px-4 py-2 rounded-xl text-sm font-black bg-brand-500/20 text-brand-300 border border-brand-500/30 shadow-sm tracking-widest uppercase">${script.version}</span></div>
-                    <div class="space-y-6 relative z-10">
-                        <div><label class="block text-xs font-black text-zinc-400 mb-3 uppercase tracking-widest">Script Name</label><input type="text" id="input-es-name" value="${script.name}" class="w-full glass-input rounded-2xl p-4 text-white focus:border-brand-500 outline-none shadow-inner font-bold text-base"></div>
-                        <div><label class="block text-xs font-black text-zinc-400 mb-3 uppercase tracking-widest">Game ID</label><input type="text" id="input-es-gameid" value="${script.gameId || ''}" placeholder="Leave empty for Universal Script" class="w-full glass-input rounded-2xl p-4 text-white focus:border-brand-500 outline-none font-mono shadow-inner font-bold text-base"></div>
-                        <div class="flex items-center justify-between bg-black/50 p-5 rounded-2xl border border-white/10 shadow-inner">
-                            <div><p class="text-base font-extrabold text-white tracking-wide">Allow Solara/Xeno</p><p class="text-xs text-zinc-500 mt-1.5 font-bold tracking-wide">Let these executors run the script</p></div>
-                            <button id="toggle-solaraxeno-edit" onclick="toggleSolaraXenoEdit()" class="relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none border-[1.5px] ${script.allowSolaraXeno ? 'border-[#272a54] bg-black/80' : 'border-white/10 bg-black/80'} shadow-inner transition-colors duration-300"><span id="toggle-solaraxeno-edit-thumb" class="pointer-events-none absolute left-[3px] inline-block h-5 w-5 transform rounded-full transition-all duration-300 ${script.allowSolaraXeno ? 'translate-x-[22px] bg-[#515dfa] shadow-[0_0_12px_#515dfa]' : 'translate-x-0 bg-zinc-500'}"></span></button>
-                        </div>
-                        <div><label class="block text-xs font-black text-zinc-400 mb-3 uppercase tracking-widest">Reupload File <span class="text-brand-400 normal-case tracking-normal">(Bumps Version)</span></label><input type="file" id="input-es-file" accept=".lua" class="w-full text-sm text-zinc-300 file:mr-6 file:py-3.5 file:px-7 file:rounded-xl file:border-0 file:bg-white/10 file:text-white file:font-extrabold hover:file:bg-white/20 glass-input rounded-2xl outline-none cursor-pointer shadow-inner"></div>
-                    </div>
-                    <div class="flex justify-end gap-4 mt-10 pt-8 border-t border-white/10 relative z-10"><button onclick="closeModal()" class="px-7 py-4 text-sm font-extrabold text-zinc-300 hover:text-white glass-btn rounded-xl tracking-wide">Cancel</button><button onclick="saveEditScript('${projectId}', '${scriptId}')" class="gradient-btn text-white px-9 py-4 rounded-xl text-sm font-extrabold hover:-translate-y-1 tracking-wide">Save</button></div>
-                </div>
-            </div>`;
-            lucide.createIcons();
-        }
+            if (interaction.commandName === 'setup_panel') {
+                const row = buildProjectSelect("selectproj_setuppanel", interaction, db);
+                if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
+                return interaction.reply({ content: "Please select a project for the panel:", components: [row], ephemeral: true });
+            }
 
-        function toggleSolaraXenoEdit() {
-            window.tempAllowSolaraEdit = !window.tempAllowSolaraEdit;
-            const btn = document.getElementById('toggle-solaraxeno-edit');
-            const thumb = document.getElementById('toggle-solaraxeno-edit-thumb');
-            if(window.tempAllowSolaraEdit) {
-                btn.className = "relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none bg-brand-500 transition-colors duration-200";
-                thumb.className = "pointer-events-none absolute left-[3px] inline-block h-5 w-5 transform rounded-full bg-white transition-transform duration-200 translate-x-[16px]";
-            } else {
-                btn.className = "relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none bg-zinc-700 transition-colors duration-200";
-                thumb.className = "pointer-events-none absolute left-[3px] inline-block h-5 w-5 transform rounded-full bg-white transition-transform duration-200 translate-x-0";
+            if (interaction.commandName === 'create_giveaway') {
+                const row = buildProjectSelect("selectproj_giveaway", interaction, db);
+                if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
+                return interaction.reply({ content: "Please select a project for the giveaway:", components: [row], ephemeral: true });
+            }
+
+            if (interaction.commandName === 'generate_key') {
+                const row = buildProjectSelect("selectproj_genkey", interaction, db);
+                if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
+                return interaction.reply({ content: "Please select a project to generate keys for:", components: [row], ephemeral: true });
+            }
+
+            if (interaction.commandName === 'clear_keys') {
+                const row = buildProjectSelect("selectproj_clearkeys", interaction, db);
+                if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
+                return interaction.reply({ content: "Please select a project to clear keys from:", components: [row], ephemeral: true });
+            }
+
+            if (interaction.commandName === 'user_info') {
+                const row = buildProjectSelect("selectproj_userinfo", interaction, db);
+                if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
+                return interaction.reply({ content: "Please select a project to view the user's info:", components: [row], ephemeral: true });
+            }
+
+            if (interaction.commandName === 'reset_hwid') {
+                const modal = new ModalBuilder().setCustomId("modal_resethwid").setTitle('Reset User HWID');
+                modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hwidKey').setLabel("The HWID Key").setStyle(TextInputStyle.Short).setRequired(true)));
+                return await interaction.showModal(modal).catch(console.error);
+            }
+
+            if (interaction.commandName === 'extend_key') {
+                const modal = new ModalBuilder().setCustomId("modal_extendkey").setTitle('Extend User Key');
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hwidKey').setLabel("The HWID Key").setStyle(TextInputStyle.Short).setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('days').setLabel("Days to Add").setStyle(TextInputStyle.Short).setRequired(true))
+                );
+                return await interaction.showModal(modal).catch(console.error);
+            }
+
+            if (interaction.commandName === 'revoke_key') {
+                const modal = new ModalBuilder().setCustomId("modal_revokekey").setTitle('Revoke User Key');
+                modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hwidKey').setLabel("The HWID Key to delete").setStyle(TextInputStyle.Short).setRequired(true)));
+                return await interaction.showModal(modal).catch(console.error);
             }
         }
 
-        async function saveEditScript(projectId, scriptId) {
-            const project = state.projects.find(p => p.id === projectId);
-            const script = project.scripts.find(s => s.id === scriptId);
-            const newName = document.getElementById('input-es-name').value.trim();
-            const newGameId = document.getElementById('input-es-gameid').value.trim();
-            const fileInput = document.getElementById('input-es-file');
+        if (interaction.isStringSelectMenu()) {
+            const parts = interaction.customId.split('_');
+            const prefix = parts;
+            
+            if (prefix === 'selectproj') {
+                const action = parts;
+                const projectId = interaction.values;
+                const db = readDB();
+                const project = db.projects.find(p => p.id === projectId);
 
-            if(!newName) return showToast('Script name cannot be empty', 'error');
+                if (!project) return interaction.update({ content: "Project not found.", components: [] });
 
-            const oldState = Object.assign({}, script);
-            script.name = newName; script.gameId = newGameId; script.allowSolaraXeno = window.tempAllowSolaraEdit;
+                if (action === 'setuppanel') {
+                    try {
+                        const modal = new ModalBuilder().setCustomId(`modal_setuppanel_${projectId}`).setTitle('Setup Panel Settings');
+                        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('roleId').setLabel("Customer Role ID (Optional)").setStyle(TextInputStyle.Short).setRequired(false)));
+                        return await interaction.showModal(modal);
+                    } catch (e) { console.error(e); }
+                }
 
-            const processSave = async (codeToCheck) => {
-                if (codeToCheck && typeof luaparse !== 'undefined') {
-                    try { luaparse.parse(codeToCheck, { comments: false }); } 
-                    catch (err) {
-                        const proceed = confirm(`Syntax Error:\n\n${err.message}\n\nSave anyway?`);
-                        if (!proceed) { Object.assign(script, oldState); return; }
+                if (action === 'giveaway') {
+                    try {
+                        const modal = new ModalBuilder().setCustomId(`modal_giveaway_${projectId}`).setTitle('Giveaway Settings');
+                        modal.addComponents(
+                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('winners').setLabel("Number of Winners").setStyle(TextInputStyle.Short).setRequired(true)),
+                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('keyDays').setLabel("Key Duration (Days)").setStyle(TextInputStyle.Short).setRequired(true)),
+                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('durationMins').setLabel("Giveaway Duration (Minutes)").setStyle(TextInputStyle.Short).setRequired(true))
+                        );
+                        return await interaction.showModal(modal);
+                    } catch (e) { console.error(e); }
+                }
+
+                if (action === 'genkey') {
+                    try {
+                        const modal = new ModalBuilder().setCustomId(`modal_genkey_${projectId}`).setTitle('Generate Keys');
+                        modal.addComponents(
+                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('days').setLabel("Duration in Days").setStyle(TextInputStyle.Short).setRequired(true)),
+                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('amount').setLabel("Amount of Keys (Max 1000)").setStyle(TextInputStyle.Short).setRequired(true))
+                        );
+                        return await interaction.showModal(modal);
+                    } catch (e) { console.error(e); }
+                }
+
+                if (action === 'userinfo') {
+                    try {
+                        const modal = new ModalBuilder().setCustomId(`modal_userinfo_${projectId}`).setTitle('Lookup User');
+                        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('userId').setLabel("Discord User ID").setStyle(TextInputStyle.Short).setRequired(true)));
+                        return await interaction.showModal(modal);
+                    } catch (e) { console.error(e); }
+                }
+
+                if (action === 'clearkeys') {
+                    const initialLength = project.hwidKeys ? project.hwidKeys.length : 0;
+                    if (project.hwidKeys) {
+                        project.hwidKeys = project.hwidKeys.filter(k => {
+                            const isUnused = !k.userId;
+                            const isExpired = Date.now() > k.expiresAt;
+                            return !isUnused && !isExpired; 
+                        });
+                    }
+                    writeDB(db);
+                    const removed = initialLength - (project.hwidKeys ? project.hwidKeys.length : 0);
+                    
+                    const okEmbed = new EmbedBuilder().setColor(0xF59E0B).setDescription(`${EMOJI_BROOM} **Cleared ${removed} unused or expired keys** from ${project.name}.`);
+                    return interaction.update({ content: "", embeds: [okEmbed], components: [] });
+                }
+            }
+        }
+
+        if (interaction.isButton()) {
+            const parts = interaction.customId.split('_');
+            const prefix = parts;
+
+            if (prefix === 'authgw') {
+                try {
+                    await interaction.deferReply({ ephemeral: true });
+                    const gwId = parts.slice(2).join('_');
+                    const db = readDB();
+                    const gw = db.giveaways.find(g => g.id === gwId);
+                    
+                    if (!gw) return interaction.editReply({ content: "Giveaway not found or expired." });
+                    if (gw.ended) return interaction.editReply({ content: "Giveaway has ended." });
+
+                    const project = db.projects.find(p => p.id === gw.projectId);
+                    if (!project) return interaction.editReply({ content: "Project not found." });
+
+                    if (project.discordConfig && project.discordConfig.roleId) {
+                        try {
+                            const member = await interaction.guild.members.fetch(interaction.user.id);
+                            if (member && member.roles.cache.has(project.discordConfig.roleId)) {
+                                return interaction.editReply({ content: "You already have the customer role for this project, so you cannot enter!" });
+                            }
+                        } catch(e) {}
+                    }
+
+                    if (gw.participants.includes(interaction.user.id)) {
+                        return interaction.editReply({ content: "You have already entered this giveaway!" });
+                    }
+
+                    gw.participants.push(interaction.user.id);
+                    writeDB(db);
+                    return interaction.editReply({ content: `${EMOJI_TADA} You have successfully entered the giveaway!` });
+                } catch(e) {
+                    return interaction.editReply({ content: "An error occurred while joining." });
+                }
+            }
+
+            if (prefix === 'auth') {
+                const action = parts;
+                const projectId = parts.slice(2).join('_');
+                
+                const db = readDB();
+                const project = db.projects.find(p => p.id === projectId);
+                if (!project) return interaction.reply({ content: "Project no longer exists.", ephemeral: true });
+
+                if (action === 'redeem') {
+                    const modal = new ModalBuilder().setCustomId(`modal_redeem_${projectId}`).setTitle('Redeem License Key');
+                    const keyInput = new TextInputBuilder().setCustomId('keyInput').setLabel("Enter your HWID Key").setStyle(TextInputStyle.Short).setRequired(true);
+                    modal.addComponents(new ActionRowBuilder().addComponents(keyInput));
+                    return await interaction.showModal(modal).catch(console.error);
+                }
+
+                await interaction.deferReply({ ephemeral: true });
+
+                const userKey = (project.hwidKeys || []).find(k => k.userId === interaction.user.id);
+                if (!userKey) return interaction.editReply({ content: "You do not have a claimed key for this project." });
+
+                const loaderCode = `getgenv().script_key = "${userKey.key}"\nloadstring(game:HttpGet("${HOST_URL}/loader/${projectId}"))()`;
+
+                if (action === 'getscriptembed') {
+                    const scriptEmbed = new EmbedBuilder()
+                        .setTitle('Your Script Loader')
+                        .setDescription(`\`\`\`lua\n${loaderCode}\n\`\`\``)
+                        .setColor(0x4F6CEE)
+                        .setFooter({ text: "Do not share your key with anyone." });
+                    return interaction.editReply({ embeds: [scriptEmbed] });
+                }
+
+                if (action === 'getscriptnoembed') {
+                    return interaction.editReply({ content: loaderCode });
+                }
+
+                if (action === 'reset') {
+                    const cooldownMs = (project.hwidResetCooldown || 24) * 60 * 60 * 1000;
+                    if (Date.now() - (userKey.lastReset || 0) < cooldownMs) {
+                        const hoursLeft = Math.ceil((cooldownMs - (Date.now() - userKey.lastReset)) / 3600000);
+                        return interaction.editReply({ content: `Cooldown active. You can reset your HWID again in ${hoursLeft} hours.` });
+                    }
+                    userKey.hwid = null;
+                    userKey.ip = null;
+                    userKey.lastReset = Date.now();
+                    writeDB(db);
+                    return interaction.editReply({ content: `${EMOJI_CHECK} Your HWID has been successfully reset. Run the script again to bind your new device.` });
+                }
+
+                if (action === 'stats') {
+                    const daysLeft = Math.max(0, Math.ceil((userKey.expiresAt - Date.now()) / (1000 * 60 * 60 * 24)));
+                    const statusStr = userKey.hwid ? "Locked to Device" : "Unbound";
+                    const statsEmbed = new EmbedBuilder()
+                        .setTitle("Account Statistics")
+                        .setColor(0x4F6CEE)
+                        .addFields(
+                            { name: "Project", value: project.name, inline: true },
+                            { name: "Days Remaining", value: `${daysLeft} Days`, inline: true },
+                            { name: "HWID Status", value: statusStr, inline: false }
+                        );
+                    return interaction.editReply({ embeds: [statsEmbed] });
+                }
+            }
+        }
+
+        if (interaction.isModalSubmit()) {
+            const parts = interaction.customId.split('_');
+            const prefix = parts.shift();
+            const action = parts.shift();
+            
+            if (prefix !== 'modal') return;
+
+            const db = readDB();
+
+            if (action === 'setadminrole') {
+                await interaction.deferReply({ ephemeral: true });
+                const roleId = interaction.fields.getTextInputValue('roleId').trim();
+                if (!db.guildConfigs) db.guildConfigs = {};
+                if (!db.guildConfigs[interaction.guildId]) db.guildConfigs[interaction.guildId] = {};
+                db.guildConfigs[interaction.guildId].adminRoleId = roleId;
+                writeDB(db);
+                const okEmbed = new EmbedBuilder().setColor(0x10B981).setDescription(`${EMOJI_CHECK} Admin Role successfully set to <@&${roleId}>.`);
+                return interaction.editReply({ embeds: [okEmbed] });
+            }
+
+            if (action === 'resethwid') {
+                await interaction.deferReply({ ephemeral: true });
+                const keyStr = interaction.fields.getTextInputValue('hwidKey').trim();
+                let found = false;
+                db.projects.forEach(p => {
+                    const k = (p.hwidKeys || []).find(x => x.key === keyStr);
+                    if (k) { k.hwid = null; k.ip = null; k.lastReset = Date.now(); found = true; }
+                });
+                if (found) { 
+                    writeDB(db); 
+                    const okEmbed = new EmbedBuilder().setColor(0x10B981).setDescription(`${EMOJI_CHECK} HWID successfully reset for that key.`);
+                    return interaction.editReply({ embeds: [okEmbed] });
+                }
+                return interaction.editReply({ content: "Key not found." });
+            }
+
+            if (action === 'extendkey') {
+                await interaction.deferReply({ ephemeral: true });
+                const keyStr = interaction.fields.getTextInputValue('hwidKey').trim();
+                const days = parseInt(interaction.fields.getTextInputValue('days').trim());
+                if (isNaN(days)) return interaction.editReply({ content: "Invalid number of days." });
+
+                let found = false;
+                db.projects.forEach(p => {
+                    const k = (p.hwidKeys || []).find(x => x.key === keyStr);
+                    if (k) { k.expiresAt += (days * 24 * 60 * 60 * 1000); k.roleRemoved = false; found = true; }
+                });
+                if (found) { 
+                    writeDB(db); 
+                    const okEmbed = new EmbedBuilder().setColor(0x10B981).setDescription(`${EMOJI_CHECK} Key successfully extended by **${days}** days.`);
+                    return interaction.editReply({ embeds: [okEmbed] }); 
+                }
+                return interaction.editReply({ content: "Key not found." });
+            }
+
+            if (action === 'revokekey') {
+                await interaction.deferReply({ ephemeral: true });
+                const keyStr = interaction.fields.getTextInputValue('hwidKey').trim();
+                let found = false;
+                db.projects.forEach(async p => {
+                    const idx = (p.hwidKeys || []).findIndex(x => x.key === keyStr);
+                    if (idx !== -1) { 
+                        const k = p.hwidKeys[idx];
+                        if (k.userId && p.discordConfig && p.discordConfig.roleId) {
+                            try {
+                                const guild = await client.guilds.fetch(p.discordConfig.guildId);
+                                const member = await guild.members.fetch(k.userId);
+                                await member.roles.remove(p.discordConfig.roleId);
+                            } catch (e) {}
+                        }
+                        p.hwidKeys.splice(idx, 1); 
+                        found = true; 
+                    }
+                });
+                if (found) { 
+                    writeDB(db); 
+                    const okEmbed = new EmbedBuilder().setColor(0xEF4444).setDescription(`${EMOJI_TRASH} Key successfully revoked and deleted.`);
+                    return interaction.editReply({ embeds: [okEmbed] }); 
+                }
+                return interaction.editReply({ content: "Key not found." });
+            }
+
+            if (action === 'userinfo') {
+                await interaction.deferReply({ ephemeral: true });
+                const projectId = parts.join('_');
+                const project = db.projects.find(p => p.id === projectId);
+                if (!project) return interaction.editReply({ content: "Project no longer exists." });
+
+                const targetUserId = interaction.fields.getTextInputValue('userId').trim();
+                const userKey = (project.hwidKeys || []).find(k => k.userId === targetUserId);
+                if (!userKey) {
+                    const errEmbed = new EmbedBuilder().setColor(0xEF4444).setDescription(`${EMOJI_CROSS} <@${targetUserId}> does not have a key for this project.`);
+                    return interaction.editReply({ embeds: [errEmbed] });
+                }
+
+                const daysLeft = Math.max(0, Math.ceil((userKey.expiresAt - Date.now()) / (1000 * 60 * 60 * 24)));
+                const statusStr = userKey.hwid ? `Locked to Device (${userKey.hwid.substring(0, 8)}...)` : "Unbound";
+
+                let targetUsername = "User";
+                try {
+                    const tUser = await client.users.fetch(targetUserId);
+                    targetUsername = tUser.username;
+                } catch(e) {}
+
+                const infoEmbed = new EmbedBuilder()
+                    .setTitle(`User Info: ${targetUsername}`)
+                    .setColor(0x4F6CEE)
+                    .addFields(
+                        { name: "Project", value: project.name, inline: true },
+                        { name: "Key", value: `||${userKey.key}||`, inline: true },
+                        { name: "Days Left", value: `${daysLeft} Days`, inline: true },
+                        { name: "HWID Status", value: statusStr, inline: true }
+                    );
+                return interaction.editReply({ embeds: [infoEmbed] });
+            }
+
+            if (action === 'setuppanel') {
+                await interaction.deferReply({ ephemeral: true });
+                const projectId = parts.join('_');
+                const project = db.projects.find(p => p.id === projectId);
+                if (!project) return interaction.editReply({ content: "Project no longer exists." });
+
+                const roleId = interaction.fields.getTextInputValue('roleId').trim();
+                project.discordConfig = { guildId: interaction.guildId, roleId: roleId, channelId: interaction.channelId };
+                writeDB(db);
+                
+                const embed = new EmbedBuilder()
+                    .setTitle(`${project.name} - Script Panel`)
+                    .setColor(0x4F6CEE)
+                    .setDescription("**Script:** Custom Loader\n\nUse the buttons below to manage your account:\n• Redeem your key to link your Discord account\n• Get the script download code\n• Reset your hardware ID\n• View your account statistics");
+
+                const row1 = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`auth_redeem_${project.id}`).setLabel('Redeem Key').setEmoji("🔑").setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId(`auth_stats_${project.id}`).setLabel('Status').setEmoji("📊").setStyle(ButtonStyle.Secondary)
+                );
+                const row2 = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`auth_getscriptembed_${project.id}`).setLabel('Copy Script').setEmoji("📥").setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder().setCustomId(`auth_getscriptnoembed_${project.id}`).setLabel('Copy Script (No Embed)').setEmoji("📋").setStyle(ButtonStyle.Primary)
+                );
+                const row3 = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`auth_reset_${project.id}`).setLabel('Reset HWID').setEmoji("🔄").setStyle(ButtonStyle.Danger)
+                );
+
+                const channel = await client.channels.fetch(interaction.channelId).catch(() => null);
+                if (!channel) return interaction.editReply({ content: "❌ Could not access the channel." });
+
+                await channel.send({ embeds: [embed], components: [row1, row2, row3] }).catch(() => {});
+                
+                const okEmbed = new EmbedBuilder().setColor(0x10B981).setDescription(`${EMOJI_CHECK} Panel deployed successfully.`);
+                return interaction.editReply({ embeds: [okEmbed] });
+            }
+
+            if (action === 'genkey') {
+                await interaction.deferReply({ ephemeral: true });
+                const projectId = parts.join('_');
+                const project = db.projects.find(p => p.id === projectId);
+                if (!project) return interaction.editReply({ content: "Project no longer exists." });
+
+                const days = parseInt(interaction.fields.getTextInputValue('days'));
+                const amount = parseInt(interaction.fields.getTextInputValue('amount'));
+                if (isNaN(days) || isNaN(amount)) return interaction.editReply({ content: "Invalid numbers provided." });
+
+                const expiresAt = Date.now() + (days * 24 * 60 * 60 * 1000);
+                if (!project.hwidKeys) project.hwidKeys = [];
+                
+                const generated = [];
+                for(let i=0; i<amount; i++) {
+                    const newKey = crypto.randomBytes(12).toString('hex').toLowerCase();
+                    generated.push(newKey);
+                    project.hwidKeys.push({ key: newKey, createdAt: Date.now(), expiresAt: expiresAt, userId: null, hwid: null, ip: null, roleRemoved: false });
+                }
+                writeDB(db);
+
+                const okEmbed = new EmbedBuilder()
+                    .setTitle(`✅ Generated ${amount} Key(s)`)
+                    .setColor(0x10B981)
+                    .addFields(
+                        { name: 'Project', value: project.name, inline: true },
+                        { name: 'Duration', value: `${days} Days`, inline: true }
+                    );
+
+                if (amount > 15) {
+                    const buffer = Buffer.from(generated.join('\n'), 'utf-8');
+                    const attachment = new AttachmentBuilder(buffer, { name: 'keys.txt' });
+                    okEmbed.setDescription("Keys have been attached in the text file below.");
+                    return interaction.editReply({ embeds: [okEmbed], files: [attachment] });
+                } else {
+                    const keyList = generated.map(k => `\`${k}\``).join('\n');
+                    okEmbed.setDescription(`**Keys:**\n${keyList}`);
+                    return interaction.editReply({ embeds: [okEmbed] });
+                }
+            }
+
+            if (action === 'giveaway') {
+                await interaction.deferReply({ ephemeral: true });
+                const projectId = parts.join('_');
+                const project = db.projects.find(p => p.id === projectId);
+                if (!project) return interaction.editReply({ content: "Project no longer exists." });
+
+                const winners = parseInt(interaction.fields.getTextInputValue('winners'));
+                const keyDays = parseInt(interaction.fields.getTextInputValue('keyDays'));
+                const durationMins = parseInt(interaction.fields.getTextInputValue('durationMins'));
+
+                if (isNaN(winners) || isNaN(keyDays) || isNaN(durationMins)) {
+                    return interaction.editReply({ content: "Invalid numbers provided." });
+                }
+
+                const gwId = crypto.randomBytes(8).toString('hex');
+                const endsAt = Date.now() + (durationMins * 60 * 1000);
+                const timestamp = Math.floor(endsAt / 1000);
+
+                const embed = new EmbedBuilder()
+                    .setTitle(`🎉 **${project.name} Script Giveaway!** 🎉`)
+                    .setColor(0x4F6CEE)
+                    .setDescription(`**Prize:** ${winners}x Key(s) (${keyDays} Days)\n**Ends:** <t:${timestamp}:R> (<t:${timestamp}:f>)\n\nClick the button below to enter!`)
+                    .setFooter({ text: "Luau-Auth Giveaways" });
+
+                const rowBtn = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`authgw_join_${gwId}`).setLabel('Join Giveaway').setEmoji("🎉").setStyle(ButtonStyle.Success)
+                );
+
+                const channel = await client.channels.fetch(interaction.channelId).catch(() => null);
+                if (!channel) return interaction.editReply({ content: `❌ Could not access the channel.` });
+
+                const msg = await channel.send({ embeds: [embed], components: [rowBtn] });
+
+                db.giveaways.push({
+                    id: gwId,
+                    messageId: msg.id,
+                    channelId: msg.channelId,
+                    guildId: msg.guildId,
+                    projectId: project.id,
+                    winnersCount: winners,
+                    keyDays: keyDays,
+                    endsAt: endsAt,
+                    ended: false,
+                    participants: []
+                });
+                writeDB(db);
+
+                return interaction.editReply({ content: `✅ Giveaway deployed successfully!` });
+            }
+
+        }
+    } catch (globalError) {
+        console.error("Global Interaction Error:", globalError);
+        try {
+            if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: "An error occurred while processing this command.", ephemeral: true });
+            } else if (interaction.deferred && !interaction.replied) {
+                await interaction.editReply({ content: "An error occurred while processing this command." });
+            }
+        } catch (e) {}
+    }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[OK] Web Server is running on port ${PORT}`);
+});
+
+if (DISCORD_BOT_TOKEN) {
+    console.log("Attempting to log in to Discord...");
+    client.login(DISCORD_BOT_TOKEN).then(() => {
+        console.log(`[OK] Discord Bot Successfully Logged In as ${client.user.tag}`);
+    }).catch((err) => {
+        console.error("[ERROR] DISCORD BOT CRASHED ON STARTUP:", err.message);
+    });
+}console.log("Starting Sanctuary Backend...");
+
+const express = require('express');
+const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder, REST, Routes, SlashCommandBuilder, AttachmentBuilder, PermissionFlagsBits, StringSelectMenuBuilder } = require('discord.js');
+
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.static(__dirname));
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+const dbPath = path.join(__dirname, 'database.json');
+const ADMIN_IDS = ["1284247278957367337", "1282859051092414586"];
+
+// Secure Environment Variables (Set these in Railway)
+const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
+const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const HOST_URL = process.env.HOST_URL;
+const REDIRECT_URI = `${HOST_URL}/api/auth/callback`;
+
+// Safe Unicode Emojis
+const EMOJI_CHECK = "\u2705";
+const EMOJI_CROSS = "\u274C";
+const EMOJI_TADA = "\uD83C\uDF89";
+const EMOJI_SAD = "\uD83D\uDE22";
+const EMOJI_BROOM = "\uD83E\uDDF9";
+const EMOJI_TRASH = "\uD83D\uDDD1\uFE0F";
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+
+const readDB = () => {
+    try {
+        if (fs.existsSync(dbPath)) {
+            const data = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+            if (!data.apiKeys) data.apiKeys = {};
+            if (!data.projects) data.projects = [];
+            if (!data.guildConfigs) data.guildConfigs = {};
+            if (!data.giveaways) data.giveaways = [];
+            return data;
+        }
+    } catch (err) {}
+    return { projects: [], apiKeys: {}, sessions: {}, guildConfigs: {}, giveaways: [] };
+};
+
+const writeDB = (data) => {
+    try { fs.writeFileSync(dbPath, JSON.stringify(data, null, 2)); } catch (err) {}
+};
+
+const requireValidAccess = (req, res, next) => {
+    const { apiKey, discordId } = req.body;
+    if (ADMIN_IDS.includes(discordId)) return next();
+    if (!apiKey) return res.status(401).json({ error: "API Key required" });
+    const db = readDB();
+    const keyData = db.apiKeys[apiKey];
+    if (!keyData) return res.status(401).json({ error: "Invalid API Key" });
+    if (Date.now() > keyData.expiresAt) return res.status(403).json({ error: "API Key expired" });
+    next();
+};
+
+app.get('/api/auth/discord', (req, res) => {
+    if (!DISCORD_CLIENT_ID || !HOST_URL) return res.status(500).send("Railway Variables not configured.");
+    res.redirect(`https://discord.com/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify`);
+});
+
+app.get('/api/auth/callback', async (req, res) => {
+    const { code } = req.query;
+    if (!code) return res.send("No code provided.");
+    try {
+        const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+            method: 'POST',
+            body: new URLSearchParams({
+                client_id: DISCORD_CLIENT_ID,
+                client_secret: DISCORD_CLIENT_SECRET,
+                grant_type: 'authorization_code',
+                code: code,
+                redirect_uri: REDIRECT_URI
+            }),
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+        const tokenData = await tokenResponse.json();
+        const userResponse = await fetch('https://discord.com/api/users/@me', {
+            headers: { authorization: `Bearer ${tokenData.access_token}` }
+        });
+        const userData = await userResponse.json();
+        
+        const safeUserObj = {
+            id: userData.id,
+            username: userData.username,
+            avatar: userData.avatar || '',
+            isAdmin: ADMIN_IDS.includes(userData.id)
+        };
+        
+        const htmlResponse = `
+            <script>
+                localStorage.setItem('sanctuary_user', JSON.stringify(${JSON.stringify(safeUserObj)}));
+                window.location.href = "/";
+            </script>
+        `;
+        res.send(htmlResponse);
+    } catch (err) {
+        res.status(500).send("Authentication failed.");
+    }
+});
+
+app.post('/api/link-key', (req, res) => {
+    const { apiKey, discordId, discordName } = req.body;
+    const db = readDB();
+    if (!db.apiKeys[apiKey]) return res.status(400).json({ error: "Invalid Key" });
+    db.apiKeys[apiKey].userId = discordId;
+    db.apiKeys[apiKey].username = discordName;
+    writeDB(db);
+    res.json({ success: true, expiresAt: db.apiKeys[apiKey].expiresAt });
+});
+
+app.post('/api/check-key', (req, res) => {
+    const { apiKey } = req.body;
+    const db = readDB();
+    const keyData = db.apiKeys[apiKey];
+    if (!keyData) return res.json({ valid: false });
+    res.json({ valid: true, expiresAt: keyData.expiresAt });
+});
+
+const requireAdmin = (req, res, next) => {
+    if (!ADMIN_IDS.includes(req.body.discordId)) return res.status(403).json({ error: "Unauthorized" });
+    next();
+};
+
+app.post('/api/admin/keys', requireAdmin, (req, res) => res.json({ keys: readDB().apiKeys }));
+
+app.post('/api/admin/generate-key', requireAdmin, (req, res) => {
+    const db = readDB();
+    const newKey = crypto.randomBytes(12).toString('hex').toLowerCase();
+    const expiresAt = Date.now() + (parseInt(req.body.days) * 24 * 60 * 60 * 1000);
+    db.apiKeys[newKey] = { createdAt: Date.now(), expiresAt: expiresAt, userId: null, username: null };
+    writeDB(db);
+    res.json({ key: newKey, expiresAt: expiresAt });
+});
+
+app.post('/api/admin/extend-key', requireAdmin, (req, res) => {
+    const { targetKey, days } = req.body;
+    const db = readDB();
+    if (!db.apiKeys[targetKey]) return res.status(404).json({ error: "Not found" });
+    db.apiKeys[targetKey].expiresAt += (parseInt(days) * 24 * 60 * 60 * 1000);
+    writeDB(db);
+    res.json({ success: true });
+});
+
+app.post('/api/admin/revoke-key', requireAdmin, (req, res) => {
+    const db = readDB();
+    if (db.apiKeys[req.body.targetKey]) {
+        delete db.apiKeys[req.body.targetKey];
+        writeDB(db);
+    }
+    res.json({ success: true });
+});
+
+app.get('/api/sync', (req, res) => {
+    const { discordId } = req.query;
+    const db = readDB();
+    if (!discordId) return res.json({ projects: [] });
+    const isAdmin = ADMIN_IDS.includes(discordId);
+    let needsSave = false;
+    db.projects.forEach(p => {
+        if (!p.ownerId) { p.ownerId = discordId; needsSave = true; }
+        if (p.freeMode === undefined) { p.freeMode = true; needsSave = true; }
+        if (p.hwidResetCooldown === undefined) { p.hwidResetCooldown = 24; needsSave = true; }
+        if (!p.hwidKeys) { p.hwidKeys = []; needsSave = true; }
+    });
+    if (needsSave) writeDB(db);
+    res.json({ projects: isAdmin ? db.projects : db.projects.filter(p => p.ownerId === discordId) });
+});
+
+app.post('/api/sync', requireValidAccess, (req, res) => {
+    const db = readDB();
+    const incomingProjects = req.body.projects;
+    const discordId = req.body.discordId;
+    const isAdmin = ADMIN_IDS.includes(discordId);
+    if (isAdmin) {
+        db.projects = incomingProjects;
+    } else {
+        const otherUsersProjects = db.projects.filter(p => p.ownerId !== discordId);
+        const userProjectsToSave = incomingProjects.filter(p => p.ownerId === discordId || !p.ownerId);
+        userProjectsToSave.forEach(p => p.ownerId = discordId);
+        db.projects = [...otherUsersProjects, ...userProjectsToSave];
+    }
+    writeDB(db);
+    res.json({ success: true });
+});
+
+app.get('/raw/:projectId/:scriptId', async (req, res) => {
+    const { projectId, scriptId } = req.params;
+    const { key, hwid } = req.query;
+    const acceptHeader = req.headers['accept'] || "";
+    
+    if (acceptHeader.includes("text/html")) {
+        res.type('text/plain');
+        return res.send(`print("Script ID: ${scriptId}")`);
+    }
+    
+    const db = readDB();
+    const project = db.projects.find(p => p.id === projectId);
+    
+    let currentIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || "UNKNOWN";
+    if (typeof currentIp === 'string' && currentIp.includes(',')) {
+        currentIp = currentIp.split(',').shift().trim();
+    }
+
+    if (project) {
+        const script = project.scripts.find(s => s.id === scriptId);
+        if (script) {
+            res.type('text/plain');
+            if (script.status !== 'Active') {
+                return res.send(`print("This script is no longer working.")`);
+            }
+            
+            let finalLuaCode = `
+local v0 = (getexecutorname and getexecutorname()) or ""
+local v1 = ${script.allowSolaraXeno === true ? "true" : "false"}
+local v2 = function()
+    print("Running Sanctuary Engine...")
+    pcall(function()
+        if not v1 then
+            if v0 and (v0:lower():find("xeno") or v0:lower():find("solara")) then
+                game:GetService("Players").LocalPlayer:Kick("You are using an executor that doesn't support this script.\\nExecutor: [" .. v0 .. "]\\nPlease use another executor.")
+            else
+                if v0 ~= nil and v0 ~= "" then
+                    print("Executor:" .. v0)
+                    print("Valid Executor.")
+                end
+            end
+        end
+    end)
+end
+v2()
+
+`;
+
+            if (project.freeMode === false) {
+                if (!key) return res.send(`game:GetService("Players").LocalPlayer:Kick("Sanctuary: No Script Key Provided")`);
+                const hwidKey = (project.hwidKeys || []).find(k => k.key === key);
+                if (!hwidKey || hwidKey.expiresAt < Date.now()) {
+                    return res.send(`game:GetService("Players").LocalPlayer:Kick("Sanctuary: Invalid or expired key")`);
+                }
+                if (!hwidKey.hwid) {
+                    hwidKey.hwid = hwid || "UNKNOWN";
+                    hwidKey.ip = currentIp;
+                    writeDB(db);
+                } else {
+                    if (hwidKey.hwid !== hwid && hwid) {
+                        return res.send(`game:GetService("Players").LocalPlayer:Kick("Sanctuary: Invalid HWID. Key is locked to another device.")`);
+                    }
+                    if (hwidKey.ip && hwidKey.ip !== currentIp && currentIp !== "UNKNOWN") {
+                        return res.send(`game:GetService("Players").LocalPlayer:Kick("Sanctuary: Invalid IP Address. Key is locked to another network.")`);
                     }
                 }
-                try { await syncToServer(); closeModal(); showToast('Script updated'); renderApp(); } 
-                catch (err) { Object.assign(script, oldState); }
-            };
+                if (project.discordConfig && project.discordConfig.roleId && hwidKey.userId) {
+                    try {
+                        const guild = await client.guilds.fetch(project.discordConfig.guildId);
+                        const member = await guild.members.fetch(hwidKey.userId);
+                        if (!member.roles.cache.has(project.discordConfig.roleId)) {
+                            return res.send(`game:GetService("Players").LocalPlayer:Kick("Sanctuary: Missing Discord Role")`);
+                        }
+                    } catch (err) {
+                        return res.send(`game:GetService("Players").LocalPlayer:Kick("Sanctuary: Discord Authentication Error")`);
+                    }
+                }
 
-            if(fileInput.files && fileInput.files.length > 0) {
-                const file = fileInput.files.item(0); 
-                if(file && file.name && file.name.toLowerCase().endsWith('.lua')) {
-                    const reader = new FileReader();
-                    reader.onload = async (event) => {
-                        script.version = incrementVersion(script.version);
-                        script.fileName = file.name; script.code = event.target.result; script.date = getShortDate();
-                        await processSave(event.target.result);
-                    };
-                    reader.readAsText(file);
-                    return;
+                finalLuaCode += `
+local _authKey = getgenv().script_key
+local _authHwid1 = (gethwid and gethwid()) or "nohwid"
+local _authHwid2 = game:GetService("RbxAnalyticsService"):GetClientId()
+local _authHwid = _authHwid1 .. "_" .. _authHwid2
+if not _authKey or _authKey == "" then
+    game:GetService("Players").LocalPlayer:Kick("Sanctuary: Whitelist Error - No Key Provided")
+    return
+end
+if _authKey ~= "${key}" then
+    game:GetService("Players").LocalPlayer:Kick("Sanctuary: Whitelist Error - Key Mismatch")
+    return
+end\n\n`;
+            }
+            
+            script.executions = (script.executions || 0) + 1;
+            if (!script.executionHistory) script.executionHistory = {};
+            const today = new Date().toISOString().split('T').shift();
+            script.executionHistory[today] = (script.executionHistory[today] || 0) + 1;
+            writeDB(db);
+            
+            if (project.webhookUrl && project.webhookUrl.trim() !== "") {
+                finalLuaCode += `
+pcall(function()
+    local request = http_request or syn and syn.request or request
+    if not request then return end
+    local HttpService = game:GetService("HttpService")
+    local Players = game:GetService("Players")
+    local UIS = game:GetService("UserInputService")
+    local player = Players.LocalPlayer
+    local executor = (getexecutorname and getexecutorname()) or (identifyexecutor and identifyexecutor()) or "Unknown"
+    local deviceType = "Unknown"
+    if UIS.TouchEnabled and not UIS.KeyboardEnabled then deviceType = "Mobile"
+    elseif UIS.GamepadEnabled and not UIS.KeyboardEnabled then deviceType = "Console"
+    elseif UIS.KeyboardEnabled then deviceType = "PC" end
+    getgenv().execCount = (getgenv().execCount or 0) + 1
+    local payload = {
+        username = "Sanctuary Logger",
+        embeds = {{
+            title = "Execution Log",
+            color = 0x4F6CEE,
+            fields = {
+                { name = "User Info", value = "Name: " .. player.Name .. "\\nUserId: " .. player.UserId, inline = false },
+                { name = "Script Triggered", value = "${script.name}", inline = false },
+                { name = "Executor", value = executor, inline = false },
+                { name = "Device", value = deviceType, inline = true },
+                { name = "IP Address", value = "${currentIp}", inline = true },
+                { name = "Executions", value = tostring(getgenv().execCount), inline = true }
+            }
+        }}
+    }
+    request({ Url = "${project.webhookUrl}", Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = HttpService:JSONEncode(payload) })
+end)\n\n`;
+            }
+            return res.send(finalLuaCode + (script.code || `print("Empty script")`));
+        }
+    }
+    res.status(404).send(`print("Error: Script or Project not found")`);
+});
+
+app.get('/loader/:projectId', (req, res) => {
+    const project = readDB().projects.find(p => p.id === req.params.projectId);
+    if (project) {
+        res.type('text/plain');
+        let scriptsTable = "";
+        (project.scripts || []).forEach(s => {
+            if (s.gameId && s.gameId !== "") {
+                scriptsTable += `    ["${s.gameId}"] = "${HOST_URL}/raw/${project.id}/${s.id}",\n`;
+            } else {
+                scriptsTable += `    ["Universal"] = "${HOST_URL}/raw/${project.id}/${s.id}",\n`;
+            }
+        });
+        
+        let authSnippet = "";
+        let callSnippet = `loadstring(game:HttpGet(Script))()`;
+
+        if (project.freeMode === false) {
+            authSnippet = `\nlocal AuthKey = getgenv().script_key or ""\nlocal hw1 = (gethwid and gethwid()) or "nohwid"\nlocal hw2 = game:GetService("RbxAnalyticsService"):GetClientId()\nlocal hwid = hw1 .. "_" .. hw2\n`;
+            callSnippet = `loadstring(game:HttpGet(Script .. "?key=" .. AuthKey .. "&hwid=" .. hwid))()`;
+        }
+        
+        let dynamicLoader = `local ProjectId = "${project.id}"\n`;
+        dynamicLoader += `local Scripts = {\n${scriptsTable}}\n`;
+        dynamicLoader += `local Script = Scripts[tostring(game.GameId)] or Scripts[game.GameId] or Scripts["Universal"]\n`;
+        dynamicLoader += `if Script then${authSnippet}\n    ${callSnippet}\nelse\n    warn("Sanctuary: No valid script found for this game.")\nend`;
+        
+        return res.send(dynamicLoader);
+    }
+    res.status(404).send(`print("Error: Project not found")`);
+});
+
+const cmds = [];
+
+const cmdLogin = new SlashCommandBuilder()
+    .setName('login')
+    .setDescription('Link your API Key to your Discord account')
+    .addStringOption(opt => opt.setName('api_key').setDescription('Your Sanctuary API Key').setRequired(true));
+cmds.push(cmdLogin);
+
+const otherCmds = ['set_admin_role', 'setup_panel', 'create_giveaway', 'generate_key', 'clear_keys', 'user_info', 'reset_hwid', 'extend_key', 'revoke_key'];
+for (const name of otherCmds) {
+    cmds.push(new SlashCommandBuilder().setName(name).setDescription(`Execute ${name}`));
+}
+
+client.once('ready', async () => {
+    if (!DISCORD_BOT_TOKEN) {
+        console.log("❌ DISCORD_BOT_TOKEN is missing in Railway Variables!");
+        return;
+    }
+    const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
+    try {
+        const cmdJson = cmds.map(c => c.toJSON());
+        await rest.put(Routes.applicationCommands(client.user.id), { body: cmdJson });
+        console.log("✅ Slash commands fully registered.");
+    } catch (error) {
+        console.log("❌ Failed to register commands:", error);
+    }
+});
+
+client.on('messageCreate', async message => {
+    if (message.author.bot || !message.guild) return;
+    if (message.member && message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
+    if (ADMIN_IDS.includes(message.author.id)) return;
+
+    const content = message.content.toLowerCase();
+    const inviteRegex = /(discord\.(gg|com\/invite)\/|dsc\.gg\/|invite\.gg\/)/i;
+    const promoRegex = /(youtube\.com\/(c|channel)\/|twitch\.tv\/|onlyfans\.com\/|tiktok\.com\/@|twitter\.com\/)/i;
+    
+    if (inviteRegex.test(content) || promoRegex.test(content)) {
+        await message.delete().catch(() => {});
+        const warnMsg = await message.channel.send(`<@${message.author.id}>, posting invites or self-promotion is not allowed!`);
+        setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
+        return;
+    }
+
+    if (message.mentions.users.size > 4) {
+        await message.delete().catch(() => {});
+        const warnMsg = await message.channel.send(`<@${message.author.id}>, please do not mass-mention users.`);
+        setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
+        return;
+    }
+});
+
+setInterval(async () => {
+    const db = readDB();
+    let needsSave = false;
+    
+    for (let p of db.projects) {
+        if (!p.hwidKeys) continue;
+        for (let k of p.hwidKeys) {
+            if (k.userId && Date.now() > k.expiresAt && !k.roleRemoved) {
+                if (p.discordConfig && p.discordConfig.roleId) {
+                    try {
+                        const guild = await client.guilds.fetch(p.discordConfig.guildId);
+                        const member = await guild.members.fetch(k.userId);
+                        await member.roles.remove(p.discordConfig.roleId);
+                    } catch (err) {}
+                }
+                k.roleRemoved = true;
+                needsSave = true;
+            }
+        }
+    }
+
+    for (let gw of db.giveaways) {
+        if (!gw.ended && Date.now() >= gw.endsAt) {
+            gw.ended = true;
+            needsSave = true;
+
+            const project = db.projects.find(p => p.id === gw.projectId);
+            if (!project) continue;
+
+            try {
+                const channel = await client.channels.fetch(gw.channelId).catch(() => null);
+                if (!channel) continue;
+
+                if (!gw.participants || gw.participants.length === 0) {
+                    const failEmbed = new EmbedBuilder()
+                        .setTitle(`${EMOJI_TADA} **Giveaway Ended** ${EMOJI_TADA}`)
+                        .setColor(0x3f3f46)
+                        .setDescription(`Nobody entered the giveaway for **${project.name}**. ${EMOJI_SAD}`);
+                    await channel.send({ embeds: [failEmbed] }).catch(() => {});
+                } else {
+                    const shuffled = gw.participants.sort(() => 0.5 - Math.random());
+                    const winners = shuffled.slice(0, gw.winnersCount);
+
+                    const winnerMentions = [];
+                    const expiresAt = Date.now() + (gw.keyDays * 24 * 60 * 60 * 1000);
+                    
+                    for (let wId of winners) {
+                        winnerMentions.push(`<@${wId}>`);
+                        const newKey = crypto.randomBytes(12).toString('hex').toLowerCase();
+                        
+                        if (!project.hwidKeys) project.hwidKeys = [];
+                        project.hwidKeys.push({
+                            key: newKey,
+                            note: "Giveaway Winner",
+                            createdAt: Date.now(),
+                            expiresAt: expiresAt,
+                            userId: wId,
+                            hwid: null,
+                            ip: null,
+                            roleRemoved: false
+                        });
+
+                        if (project.discordConfig && project.discordConfig.roleId) {
+                            try {
+                                const guild = await client.guilds.fetch(gw.guildId);
+                                const member = await guild.members.fetch(wId);
+                                await member.roles.add(project.discordConfig.roleId);
+                            } catch(e) {}
+                        }
+
+                        try {
+                            const user = await client.users.fetch(wId);
+                            const loaderCode = `getgenv().script_key = "${newKey}"\nloadstring(game:HttpGet("${HOST_URL}/loader/${project.id}"))()`;
+                            const dmEmbed = new EmbedBuilder()
+                                .setTitle(`${EMOJI_TADA} You won the Giveaway!`)
+                                .setColor(0x4F6CEE)
+                                .setDescription(`Congratulations! You won a **${gw.keyDays} Day** key for **${project.name}**!\n\nYour key has automatically been redeemed to your Discord account, and you have been given the customer role.\n\n**Your Script Loader:**\n\`\`\`lua\n${loaderCode}\n\`\`\``);
+                            await user.send({ embeds: [dmEmbed] }).catch(() => {});
+                        } catch(e) {}
+                    }
+
+                    const winEmbed = new EmbedBuilder()
+                        .setTitle(`${EMOJI_TADA} **Giveaway Winners!** ${EMOJI_TADA}`)
+                        .setColor(0x10b981)
+                        .setDescription(`**Prize:** ${gw.winnersCount}x Key(s) for ${project.name}\n**Winners:** ${winnerMentions.join(', ')}\n\n*Winners have been given the customer role and DMed their scripts automatically!*`);
+                    
+                    await channel.send({ embeds: [winEmbed] }).catch(() => {});
+                }
+
+                try {
+                    const msg = await channel.messages.fetch(gw.messageId);
+                    const endedRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('ended_btn').setLabel('Giveaway Ended').setStyle(ButtonStyle.Secondary).setDisabled(true)
+                    );
+                    await msg.edit({ components: [endedRow] });
+                } catch(e) {}
+
+            } catch (e) {}
+        }
+    }
+
+    if (needsSave) writeDB(db);
+}, 15 * 1000);
+
+const buildProjectSelect = (customId, interaction, db) => {
+    const isGlobalAdmin = ADMIN_IDS.includes(interaction.user.id);
+    const userProjects = isGlobalAdmin ? db.projects : db.projects.filter(p => p.ownerId === interaction.user.id);
+    
+    if (userProjects.length === 0) return null;
+
+    const options = userProjects.map(p => ({
+        label: p.name,
+        description: `Project ID: ${p.id.substring(0, 20)}...`,
+        value: p.id
+    })).slice(0, 25);
+
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(customId)
+        .setPlaceholder('Select a project')
+        .addOptions(options);
+
+    return new ActionRowBuilder().addComponents(selectMenu);
+};
+
+client.on('interactionCreate', async interaction => {
+    try {
+        if (interaction.isCommand()) {
+            if (!interaction.guild) return interaction.reply({ content: "Commands must be used in a server.", ephemeral: true });
+
+            const db = readDB();
+
+            if (interaction.commandName === 'login') {
+                const apiKey = interaction.options.getString('api_key');
+                if (!db.apiKeys[apiKey]) {
+                    const errEmbed = new EmbedBuilder().setColor(0xEF4444).setDescription(`${EMOJI_CROSS} Invalid API Key.`);
+                    return interaction.reply({ embeds: [errEmbed], ephemeral: true });
+                }
+                if (Date.now() > db.apiKeys[apiKey].expiresAt) {
+                    const errEmbed = new EmbedBuilder().setColor(0xEF4444).setDescription(`${EMOJI_CROSS} API Key is expired.`);
+                    return interaction.reply({ embeds: [errEmbed], ephemeral: true });
+                }
+
+                db.apiKeys[apiKey].userId = interaction.user.id;
+                db.apiKeys[apiKey].username = interaction.user.username;
+                writeDB(db);
+
+                const okEmbed = new EmbedBuilder()
+                    .setColor(0x10B981)
+                    .setTitle(`${EMOJI_CHECK} Successfully Logged In`)
+                    .setDescription("Your Discord account is now securely linked to this API Key. You can now use bot commands.");
+                return interaction.reply({ embeds: [okEmbed], ephemeral: true });
+            }
+
+            const isGlobalAdmin = ADMIN_IDS.includes(interaction.user.id);
+            const isServerOwner = interaction.user.id === interaction.guild.ownerId;
+            
+            let hasLinkedApiKey = false;
+            for (let k in db.apiKeys) {
+                if (db.apiKeys[k].userId === interaction.user.id && Date.now() < db.apiKeys[k].expiresAt) {
+                    hasLinkedApiKey = true;
+                    break;
                 }
             }
-            await processSave(null);
-        }
 
-        async function toggleScriptStatusDirect(projectId, scriptId) {
-            const project = state.projects.find(p => p.id === projectId);
-            const script = project.scripts.find(s => s.id === scriptId);
-            script.status = script.status === 'Active' ? 'Inactive' : 'Active';
-            try { await syncToServer(); renderApp(); showToast(`Script ${script.status === 'Active' ? 'enabled' : 'disabled'}`); } 
-            catch (err) { script.status = script.status === 'Active' ? 'Inactive' : 'Active'; }
-        }
-
-        async function deleteScript(projectId, scriptId) {
-            const project = state.projects.find(p => p.id === projectId);
-            const sIndex = project.scripts.findIndex(s => s.id === scriptId);
-            const sStore = project.scripts[sIndex];
-            project.scripts.splice(sIndex, 1);
-            try { await syncToServer(); showToast('Script deleted'); renderApp(); } 
-            catch (err) { project.scripts.splice(sIndex, 0, sStore); }
-        }
-
-        function openCustomLoaderModal(projectId) {
-            const project = state.projects.find(p => p.id === projectId);
-            document.getElementById('modal-container').innerHTML = `
-            <div class="fixed inset-0 bg-black/60 backdrop-blur-xl flex items-center justify-center z-50 p-4">
-                <div class="glass-card p-0 w-full max-w-4xl shadow-[0_20px_50px_0_rgba(0,0,0,0.5)] modal-animate overflow-hidden flex flex-col h-[85vh] max-h-[750px]">
-                    <div class="flex items-center justify-between px-10 py-6 border-b border-white/10 bg-black/50 flex-wrap sm:flex-nowrap gap-5">
-                        <h3 class="text-2xl font-black text-white flex items-center gap-4 tracking-tight"><div class="p-2.5 bg-white/10 rounded-xl border border-white/10 shadow-sm"><i data-lucide="code" class="text-zinc-300 w-6 h-6"></i></div> Loader Code (Lua)</h3>
-                        <div class="flex items-center gap-4 w-full sm:w-auto justify-end">
-                            <button onclick="copyLoaderLink('${projectId}')" class="px-6 py-3.5 text-sm font-extrabold text-zinc-300 hover:text-white glass-btn rounded-xl flex-1 sm:flex-none shadow-sm tracking-wide">Copy URL</button>
-                            <button onclick="autoGenerateLoader('${projectId}')" class="px-6 py-3.5 text-sm font-extrabold text-brand-300 bg-brand-500/20 hover:bg-brand-500/30 rounded-xl border border-brand-500/30 flex-1 sm:flex-none backdrop-blur-md shadow-[0_0_15px_rgba(79,70,229,0.2)] tracking-wide">Auto Gen</button>
-                            <button onclick="saveLoaderCode('${projectId}')" class="gradient-btn text-white px-8 py-3.5 rounded-xl text-sm font-extrabold flex-1 sm:flex-none hover:-translate-y-1 tracking-wide">Save</button>
-                            <button onclick="closeModal()" class="p-3.5 text-zinc-500 hover:text-white rounded-xl bg-white/5 hover:bg-red-500/20 hover:text-red-400 border border-transparent hover:border-red-500/30 ml-2 transition-all shadow-sm"><i data-lucide="x" class="w-6 h-6"></i></button>
-                        </div>
-                    </div>
-                    <div class="p-8 bg-black/50 flex-1 relative"><textarea id="loader-code-textarea">${project.loaderCode || ""}</textarea></div>
-                </div>
-            </div>`;
-            lucide.createIcons();
-            setTimeout(() => { window.loaderEditor = CodeMirror.fromTextArea(document.getElementById('loader-code-textarea'), { mode: 'lua', theme: 'luauauth', lineNumbers: false, matchBrackets: true, indentUnit: 4 }); }, 10);
-        }
-
-        function autoGenerateLoader(projectId) {
-            if (window.loaderEditor) {
-                const project = state.projects.find(p => p.id === projectId);
-                let scriptsTable = "";
-                if (project && project.scripts) {
-                    project.scripts.forEach(s => {
-                        if (s.gameId && s.gameId !== "") { scriptsTable += `    ["${s.gameId}"] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`; } 
-                        else { scriptsTable += `    ["Universal"] = "${window.location.origin}/raw/${projectId}/${s.id}",\n`; }
-                    });
+            let hasAdminRole = false;
+            if (interaction.guildId && db.guildConfigs && db.guildConfigs[interaction.guildId]) {
+                const adminRoleId = db.guildConfigs[interaction.guildId].adminRoleId;
+                if (adminRoleId) {
+                    try {
+                        const member = await interaction.guild.members.fetch(interaction.user.id);
+                        if (member.roles.cache.has(adminRoleId)) hasAdminRole = true;
+                    } catch(e){}
                 }
-                let authSnippet = project.freeMode === false ? `\nlocal AuthKey = getgenv().script_key or ""\nlocal hw1 = (gethwid and gethwid()) or "nohwid"\nlocal hw2 = game:GetService("RbxAnalyticsService"):GetClientId()\nlocal hwid = hw1 .. "_" .. hw2\n` : "";
-                let callSnippet = project.freeMode === false ? `loadstring(game:HttpGet(Script .. "?key=" .. AuthKey .. "&hwid=" .. hwid))()` : `loadstring(game:HttpGet(Script))()`;
-                window.loaderEditor.setValue(`local ProjectId = "${projectId}"\nlocal Scripts = {\n${scriptsTable}}\nlocal Script = Scripts[tostring(game.GameId)] or Scripts[game.GameId] or Scripts["Universal"]\nif Script then${authSnippet}\n    ${callSnippet}\nelse\n    warn("Luau-Auth: No valid script found for this game.")\nend`);
+            }
+            
+            const isAuthorized = isGlobalAdmin || isServerOwner || (hasAdminRole && hasLinkedApiKey);
+
+            if (interaction.commandName === 'set_admin_role') {
+                if (!isGlobalAdmin && !isServerOwner) {
+                    const errEmbed = new EmbedBuilder().setColor(0xEF4444).setDescription(`${EMOJI_CROSS} Only the Server Owner or Global Admin can assign the Admin Role.`);
+                    return interaction.reply({ embeds: [errEmbed], ephemeral: true });
+                }
+                const modal = new ModalBuilder().setCustomId("modal_setadminrole").setTitle('Set Admin Role');
+                modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('roleId').setLabel("Discord Role ID").setStyle(TextInputStyle.Short).setRequired(true)));
+                return await interaction.showModal(modal).catch(console.error);
+            }
+            
+            if (!isAuthorized) {
+                const errEmbed = new EmbedBuilder()
+                    .setColor(0xEF4444)
+                    .setTitle(`${EMOJI_CROSS} Unauthorized`)
+                    .setDescription("You must be the **Server Owner**, or have the designated **Admin Role** with a valid linked **API Key** (`/login`) to use this command.");
+                return interaction.reply({ embeds: [errEmbed], ephemeral: true });
+            }
+
+            if (interaction.commandName === 'setup_panel') {
+                const row = buildProjectSelect("selectproj_setuppanel", interaction, db);
+                if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
+                return interaction.reply({ content: "Please select a project for the panel:", components: [row], ephemeral: true });
+            }
+
+            if (interaction.commandName === 'create_giveaway') {
+                const row = buildProjectSelect("selectproj_giveaway", interaction, db);
+                if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
+                return interaction.reply({ content: "Please select a project for the giveaway:", components: [row], ephemeral: true });
+            }
+
+            if (interaction.commandName === 'generate_key') {
+                const row = buildProjectSelect("selectproj_genkey", interaction, db);
+                if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
+                return interaction.reply({ content: "Please select a project to generate keys for:", components: [row], ephemeral: true });
+            }
+
+            if (interaction.commandName === 'clear_keys') {
+                const row = buildProjectSelect("selectproj_clearkeys", interaction, db);
+                if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
+                return interaction.reply({ content: "Please select a project to clear keys from:", components: [row], ephemeral: true });
+            }
+
+            if (interaction.commandName === 'user_info') {
+                const row = buildProjectSelect("selectproj_userinfo", interaction, db);
+                if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
+                return interaction.reply({ content: "Please select a project to view the user's info:", components: [row], ephemeral: true });
+            }
+
+            if (interaction.commandName === 'reset_hwid') {
+                const modal = new ModalBuilder().setCustomId("modal_resethwid").setTitle('Reset User HWID');
+                modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hwidKey').setLabel("The HWID Key").setStyle(TextInputStyle.Short).setRequired(true)));
+                return await interaction.showModal(modal).catch(console.error);
+            }
+
+            if (interaction.commandName === 'extend_key') {
+                const modal = new ModalBuilder().setCustomId("modal_extendkey").setTitle('Extend User Key');
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hwidKey').setLabel("The HWID Key").setStyle(TextInputStyle.Short).setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('days').setLabel("Days to Add").setStyle(TextInputStyle.Short).setRequired(true))
+                );
+                return await interaction.showModal(modal).catch(console.error);
+            }
+
+            if (interaction.commandName === 'revoke_key') {
+                const modal = new ModalBuilder().setCustomId("modal_revokekey").setTitle('Revoke User Key');
+                modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hwidKey').setLabel("The HWID Key to delete").setStyle(TextInputStyle.Short).setRequired(true)));
+                return await interaction.showModal(modal).catch(console.error);
             }
         }
 
-        function copyLoaderLink(projectId) { copyToClipboard(`loadstring(game:HttpGet('${window.location.origin}/loader/${projectId}'))()`, 'Custom Loader URL copied!'); }
+        if (interaction.isStringSelectMenu()) {
+            const parts = interaction.customId.split('_');
+            const prefix = parts;
+            
+            if (prefix === 'selectproj') {
+                const action = parts;
+                const projectId = interaction.values;
+                const db = readDB();
+                const project = db.projects.find(p => p.id === projectId);
 
-        async function saveLoaderCode(projectId) {
-            const project = state.projects.find(p => p.id === projectId);
-            const oldVal = project.loaderCode; project.loaderCode = window.loaderEditor.getValue();
-            try { await syncToServer(); closeModal(); showToast('Loader code saved'); } 
-            catch (err) { project.loaderCode = oldVal; }
+                if (!project) return interaction.update({ content: "Project not found.", components: [] });
+
+                if (action === 'setuppanel') {
+                    try {
+                        const modal = new ModalBuilder().setCustomId(`modal_setuppanel_${projectId}`).setTitle('Setup Panel Settings');
+                        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('roleId').setLabel("Customer Role ID (Optional)").setStyle(TextInputStyle.Short).setRequired(false)));
+                        return await interaction.showModal(modal);
+                    } catch (e) { console.error(e); }
+                }
+
+                if (action === 'giveaway') {
+                    try {
+                        const modal = new ModalBuilder().setCustomId(`modal_giveaway_${projectId}`).setTitle('Giveaway Settings');
+                        modal.addComponents(
+                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('winners').setLabel("Number of Winners").setStyle(TextInputStyle.Short).setRequired(true)),
+                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('keyDays').setLabel("Key Duration (Days)").setStyle(TextInputStyle.Short).setRequired(true)),
+                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('durationMins').setLabel("Giveaway Duration (Minutes)").setStyle(TextInputStyle.Short).setRequired(true))
+                        );
+                        return await interaction.showModal(modal);
+                    } catch (e) { console.error(e); }
+                }
+
+                if (action === 'genkey') {
+                    try {
+                        const modal = new ModalBuilder().setCustomId(`modal_genkey_${projectId}`).setTitle('Generate Keys');
+                        modal.addComponents(
+                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('days').setLabel("Duration in Days").setStyle(TextInputStyle.Short).setRequired(true)),
+                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('amount').setLabel("Amount of Keys (Max 1000)").setStyle(TextInputStyle.Short).setRequired(true))
+                        );
+                        return await interaction.showModal(modal);
+                    } catch (e) { console.error(e); }
+                }
+
+                if (action === 'userinfo') {
+                    try {
+                        const modal = new ModalBuilder().setCustomId(`modal_userinfo_${projectId}`).setTitle('Lookup User');
+                        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('userId').setLabel("Discord User ID").setStyle(TextInputStyle.Short).setRequired(true)));
+                        return await interaction.showModal(modal);
+                    } catch (e) { console.error(e); }
+                }
+
+                if (action === 'clearkeys') {
+                    const initialLength = project.hwidKeys ? project.hwidKeys.length : 0;
+                    if (project.hwidKeys) {
+                        project.hwidKeys = project.hwidKeys.filter(k => {
+                            const isUnused = !k.userId;
+                            const isExpired = Date.now() > k.expiresAt;
+                            return !isUnused && !isExpired; 
+                        });
+                    }
+                    writeDB(db);
+                    const removed = initialLength - (project.hwidKeys ? project.hwidKeys.length : 0);
+                    
+                    const okEmbed = new EmbedBuilder().setColor(0xF59E0B).setDescription(`${EMOJI_BROOM} **Cleared ${removed} unused or expired keys** from ${project.name}.`);
+                    return interaction.update({ content: "", embeds: [okEmbed], components: [] });
+                }
+            }
         }
 
-        initApp();
-    </script>
-</body>
-</html>
+        if (interaction.isButton()) {
+            const parts = interaction.customId.split('_');
+            const prefix = parts;
+
+            if (prefix === 'authgw') {
+                try {
+                    await interaction.deferReply({ ephemeral: true });
+                    const gwId = parts.slice(2).join('_');
+                    const db = readDB();
+                    const gw = db.giveaways.find(g => g.id === gwId);
+                    
+                    if (!gw) return interaction.editReply({ content: "Giveaway not found or expired." });
+                    if (gw.ended) return interaction.editReply({ content: "Giveaway has ended." });
+
+                    const project = db.projects.find(p => p.id === gw.projectId);
+                    if (!project) return interaction.editReply({ content: "Project not found." });
+
+                    if (project.discordConfig && project.discordConfig.roleId) {
+                        try {
+                            const member = await interaction.guild.members.fetch(interaction.user.id);
+                            if (member && member.roles.cache.has(project.discordConfig.roleId)) {
+                                return interaction.editReply({ content: "You already have the customer role for this project, so you cannot enter!" });
+                            }
+                        } catch(e) {}
+                    }
+
+                    if (gw.participants.includes(interaction.user.id)) {
+                        return interaction.editReply({ content: "You have already entered this giveaway!" });
+                    }
+
+                    gw.participants.push(interaction.user.id);
+                    writeDB(db);
+                    return interaction.editReply({ content: `${EMOJI_TADA} You have successfully entered the giveaway!` });
+                } catch(e) {
+                    return interaction.editReply({ content: "An error occurred while joining." });
+                }
+            }
+
+            if (prefix === 'auth') {
+                const action = parts;
+                const projectId = parts.slice(2).join('_');
+                
+                const db = readDB();
+                const project = db.projects.find(p => p.id === projectId);
+                if (!project) return interaction.reply({ content: "Project no longer exists.", ephemeral: true });
+
+                if (action === 'redeem') {
+                    const modal = new ModalBuilder().setCustomId(`modal_redeem_${projectId}`).setTitle('Redeem License Key');
+                    const keyInput = new TextInputBuilder().setCustomId('keyInput').setLabel("Enter your HWID Key").setStyle(TextInputStyle.Short).setRequired(true);
+                    modal.addComponents(new ActionRowBuilder().addComponents(keyInput));
+                    return await interaction.showModal(modal).catch(console.error);
+                }
+
+                await interaction.deferReply({ ephemeral: true });
+
+                const userKey = (project.hwidKeys || []).find(k => k.userId === interaction.user.id);
+                if (!userKey) return interaction.editReply({ content: "You do not have a claimed key for this project." });
+
+                const loaderCode = `getgenv().script_key = "${userKey.key}"\nloadstring(game:HttpGet("${HOST_URL}/loader/${projectId}"))()`;
+
+                if (action === 'getscriptembed') {
+                    const scriptEmbed = new EmbedBuilder()
+                        .setTitle('Your Script Loader')
+                        .setDescription(`\`\`\`lua\n${loaderCode}\n\`\`\``)
+                        .setColor(0x4F6CEE)
+                        .setFooter({ text: "Do not share your key with anyone." });
+                    return interaction.editReply({ embeds: [scriptEmbed] });
+                }
+
+                if (action === 'getscriptnoembed') {
+                    return interaction.editReply({ content: loaderCode });
+                }
+
+                if (action === 'reset') {
+                    const cooldownMs = (project.hwidResetCooldown || 24) * 60 * 60 * 1000;
+                    if (Date.now() - (userKey.lastReset || 0) < cooldownMs) {
+                        const hoursLeft = Math.ceil((cooldownMs - (Date.now() - userKey.lastReset)) / 3600000);
+                        return interaction.editReply({ content: `Cooldown active. You can reset your HWID again in ${hoursLeft} hours.` });
+                    }
+                    userKey.hwid = null;
+                    userKey.ip = null;
+                    userKey.lastReset = Date.now();
+                    writeDB(db);
+                    return interaction.editReply({ content: `${EMOJI_CHECK} Your HWID has been successfully reset. Run the script again to bind your new device.` });
+                }
+
+                if (action === 'stats') {
+                    const daysLeft = Math.max(0, Math.ceil((userKey.expiresAt - Date.now()) / (1000 * 60 * 60 * 24)));
+                    const statusStr = userKey.hwid ? "Locked to Device" : "Unbound";
+                    const statsEmbed = new EmbedBuilder()
+                        .setTitle("Account Statistics")
+                        .setColor(0x4F6CEE)
+                        .addFields(
+                            { name: "Project", value: project.name, inline: true },
+                            { name: "Days Remaining", value: `${daysLeft} Days`, inline: true },
+                            { name: "HWID Status", value: statusStr, inline: false }
+                        );
+                    return interaction.editReply({ embeds: [statsEmbed] });
+                }
+            }
+        }
+
+        if (interaction.isModalSubmit()) {
+            const parts = interaction.customId.split('_');
+            const prefix = parts.shift();
+            const action = parts.shift();
+            
+            if (prefix !== 'modal') return;
+
+            const db = readDB();
+
+            if (action === 'setadminrole') {
+                await interaction.deferReply({ ephemeral: true });
+                const roleId = interaction.fields.getTextInputValue('roleId').trim();
+                if (!db.guildConfigs) db.guildConfigs = {};
+                if (!db.guildConfigs[interaction.guildId]) db.guildConfigs[interaction.guildId] = {};
+                db.guildConfigs[interaction.guildId].adminRoleId = roleId;
+                writeDB(db);
+                const okEmbed = new EmbedBuilder().setColor(0x10B981).setDescription(`${EMOJI_CHECK} Admin Role successfully set to <@&${roleId}>.`);
+                return interaction.editReply({ embeds: [okEmbed] });
+            }
+
+            if (action === 'resethwid') {
+                await interaction.deferReply({ ephemeral: true });
+                const keyStr = interaction.fields.getTextInputValue('hwidKey').trim();
+                let found = false;
+                db.projects.forEach(p => {
+                    const k = (p.hwidKeys || []).find(x => x.key === keyStr);
+                    if (k) { k.hwid = null; k.ip = null; k.lastReset = Date.now(); found = true; }
+                });
+                if (found) { 
+                    writeDB(db); 
+                    const okEmbed = new EmbedBuilder().setColor(0x10B981).setDescription(`${EMOJI_CHECK} HWID successfully reset for that key.`);
+                    return interaction.editReply({ embeds: [okEmbed] });
+                }
+                return interaction.editReply({ content: "Key not found." });
+            }
+
+            if (action === 'extendkey') {
+                await interaction.deferReply({ ephemeral: true });
+                const keyStr = interaction.fields.getTextInputValue('hwidKey').trim();
+                const days = parseInt(interaction.fields.getTextInputValue('days').trim());
+                if (isNaN(days)) return interaction.editReply({ content: "Invalid number of days." });
+
+                let found = false;
+                db.projects.forEach(p => {
+                    const k = (p.hwidKeys || []).find(x => x.key === keyStr);
+                    if (k) { k.expiresAt += (days * 24 * 60 * 60 * 1000); k.roleRemoved = false; found = true; }
+                });
+                if (found) { 
+                    writeDB(db); 
+                    const okEmbed = new EmbedBuilder().setColor(0x10B981).setDescription(`${EMOJI_CHECK} Key successfully extended by **${days}** days.`);
+                    return interaction.editReply({ embeds: [okEmbed] }); 
+                }
+                return interaction.editReply({ content: "Key not found." });
+            }
+
+            if (action === 'revokekey') {
+                await interaction.deferReply({ ephemeral: true });
+                const keyStr = interaction.fields.getTextInputValue('hwidKey').trim();
+                let found = false;
+                db.projects.forEach(async p => {
+                    const idx = (p.hwidKeys || []).findIndex(x => x.key === keyStr);
+                    if (idx !== -1) { 
+                        const k = p.hwidKeys[idx];
+                        if (k.userId && p.discordConfig && p.discordConfig.roleId) {
+                            try {
+                                const guild = await client.guilds.fetch(p.discordConfig.guildId);
+                                const member = await guild.members.fetch(k.userId);
+                                await member.roles.remove(p.discordConfig.roleId);
+                            } catch (e) {}
+                        }
+                        p.hwidKeys.splice(idx, 1); 
+                        found = true; 
+                    }
+                });
+                if (found) { 
+                    writeDB(db); 
+                    const okEmbed = new EmbedBuilder().setColor(0xEF4444).setDescription(`${EMOJI_TRASH} Key successfully revoked and deleted.`);
+                    return interaction.editReply({ embeds: [okEmbed] }); 
+                }
+                return interaction.editReply({ content: "Key not found." });
+            }
+
+            if (action === 'userinfo') {
+                await interaction.deferReply({ ephemeral: true });
+                const projectId = parts.join('_');
+                const project = db.projects.find(p => p.id === projectId);
+                if (!project) return interaction.editReply({ content: "Project no longer exists." });
+
+                const targetUserId = interaction.fields.getTextInputValue('userId').trim();
+                const userKey = (project.hwidKeys || []).find(k => k.userId === targetUserId);
+                if (!userKey) {
+                    const errEmbed = new EmbedBuilder().setColor(0xEF4444).setDescription(`${EMOJI_CROSS} <@${targetUserId}> does not have a key for this project.`);
+                    return interaction.editReply({ embeds: [errEmbed] });
+                }
+
+                const daysLeft = Math.max(0, Math.ceil((userKey.expiresAt - Date.now()) / (1000 * 60 * 60 * 24)));
+                const statusStr = userKey.hwid ? `Locked to Device (${userKey.hwid.substring(0, 8)}...)` : "Unbound";
+
+                let targetUsername = "User";
+                try {
+                    const tUser = await client.users.fetch(targetUserId);
+                    targetUsername = tUser.username;
+                } catch(e) {}
+
+                const infoEmbed = new EmbedBuilder()
+                    .setTitle(`User Info: ${targetUsername}`)
+                    .setColor(0x4F6CEE)
+                    .addFields(
+                        { name: "Project", value: project.name, inline: true },
+                        { name: "Key", value: `||${userKey.key}||`, inline: true },
+                        { name: "Days Left", value: `${daysLeft} Days`, inline: true },
+                        { name: "HWID Status", value: statusStr, inline: true }
+                    );
+                return interaction.editReply({ embeds: [infoEmbed] });
+            }
+
+            if (action === 'setuppanel') {
+                await interaction.deferReply({ ephemeral: true });
+                const projectId = parts.join('_');
+                const project = db.projects.find(p => p.id === projectId);
+                if (!project) return interaction.editReply({ content: "Project no longer exists." });
+
+                const roleId = interaction.fields.getTextInputValue('roleId').trim();
+                project.discordConfig = { guildId: interaction.guildId, roleId: roleId, channelId: interaction.channelId };
+                writeDB(db);
+                
+                const embed = new EmbedBuilder()
+                    .setTitle(`${project.name} - Script Panel`)
+                    .setColor(0x4F6CEE)
+                    .setDescription("**Script:** Custom Loader\n\nUse the buttons below to manage your account:\n• Redeem your key to link your Discord account\n• Get the script download code\n• Reset your hardware ID\n• View your account statistics");
+
+                const row1 = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`auth_redeem_${project.id}`).setLabel('Redeem Key').setEmoji("🔑").setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId(`auth_stats_${project.id}`).setLabel('Status').setEmoji("📊").setStyle(ButtonStyle.Secondary)
+                );
+                const row2 = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`auth_getscriptembed_${project.id}`).setLabel('Copy Script').setEmoji("📥").setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder().setCustomId(`auth_getscriptnoembed_${project.id}`).setLabel('Copy Script (No Embed)').setEmoji("📋").setStyle(ButtonStyle.Primary)
+                );
+                const row3 = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`auth_reset_${project.id}`).setLabel('Reset HWID').setEmoji("🔄").setStyle(ButtonStyle.Danger)
+                );
+
+                const channel = await client.channels.fetch(interaction.channelId).catch(() => null);
+                if (!channel) return interaction.editReply({ content: "❌ Could not access the channel." });
+
+                await channel.send({ embeds: [embed], components: [row1, row2, row3] }).catch(() => {});
+                
+                const okEmbed = new EmbedBuilder().setColor(0x10B981).setDescription(`${EMOJI_CHECK} Panel deployed successfully.`);
+                return interaction.editReply({ embeds: [okEmbed] });
+            }
+
+            if (action === 'genkey') {
+                await interaction.deferReply({ ephemeral: true });
+                const projectId = parts.join('_');
+                const project = db.projects.find(p => p.id === projectId);
+                if (!project) return interaction.editReply({ content: "Project no longer exists." });
+
+                const days = parseInt(interaction.fields.getTextInputValue('days'));
+                const amount = parseInt(interaction.fields.getTextInputValue('amount'));
+                if (isNaN(days) || isNaN(amount)) return interaction.editReply({ content: "Invalid numbers provided." });
+
+                const expiresAt = Date.now() + (days * 24 * 60 * 60 * 1000);
+                if (!project.hwidKeys) project.hwidKeys = [];
+                
+                const generated = [];
+                for(let i=0; i<amount; i++) {
+                    const newKey = crypto.randomBytes(12).toString('hex').toLowerCase();
+                    generated.push(newKey);
+                    project.hwidKeys.push({ key: newKey, createdAt: Date.now(), expiresAt: expiresAt, userId: null, hwid: null, ip: null, roleRemoved: false });
+                }
+                writeDB(db);
+
+                const okEmbed = new EmbedBuilder()
+                    .setTitle(`✅ Generated ${amount} Key(s)`)
+                    .setColor(0x10B981)
+                    .addFields(
+                        { name: 'Project', value: project.name, inline: true },
+                        { name: 'Duration', value: `${days} Days`, inline: true }
+                    );
+
+                if (amount > 15) {
+                    const buffer = Buffer.from(generated.join('\n'), 'utf-8');
+                    const attachment = new AttachmentBuilder(buffer, { name: 'keys.txt' });
+                    okEmbed.setDescription("Keys have been attached in the text file below.");
+                    return interaction.editReply({ embeds: [okEmbed], files: [attachment] });
+                } else {
+                    const keyList = generated.map(k => `\`${k}\``).join('\n');
+                    okEmbed.setDescription(`**Keys:**\n${keyList}`);
+                    return interaction.editReply({ embeds: [okEmbed] });
+                }
+            }
+
+            if (action === 'giveaway') {
+                await interaction.deferReply({ ephemeral: true });
+                const projectId = parts.join('_');
+                const project = db.projects.find(p => p.id === projectId);
+                if (!project) return interaction.editReply({ content: "Project no longer exists." });
+
+                const winners = parseInt(interaction.fields.getTextInputValue('winners'));
+                const keyDays = parseInt(interaction.fields.getTextInputValue('keyDays'));
+                const durationMins = parseInt(interaction.fields.getTextInputValue('durationMins'));
+
+                if (isNaN(winners) || isNaN(keyDays) || isNaN(durationMins)) {
+                    return interaction.editReply({ content: "Invalid numbers provided." });
+                }
+
+                const gwId = crypto.randomBytes(8).toString('hex');
+                const endsAt = Date.now() + (durationMins * 60 * 1000);
+                const timestamp = Math.floor(endsAt / 1000);
+
+                const embed = new EmbedBuilder()
+                    .setTitle(`🎉 **${project.name} Script Giveaway!** 🎉`)
+                    .setColor(0x4F6CEE)
+                    .setDescription(`**Prize:** ${winners}x Key(s) (${keyDays} Days)\n**Ends:** <t:${timestamp}:R> (<t:${timestamp}:f>)\n\nClick the button below to enter!`)
+                    .setFooter({ text: "Luau-Auth Giveaways" });
+
+                const rowBtn = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`authgw_join_${gwId}`).setLabel('Join Giveaway').setEmoji("🎉").setStyle(ButtonStyle.Success)
+                );
+
+                const channel = await client.channels.fetch(interaction.channelId).catch(() => null);
+                if (!channel) return interaction.editReply({ content: `❌ Could not access the channel.` });
+
+                const msg = await channel.send({ embeds: [embed], components: [rowBtn] });
+
+                db.giveaways.push({
+                    id: gwId,
+                    messageId: msg.id,
+                    channelId: msg.channelId,
+                    guildId: msg.guildId,
+                    projectId: project.id,
+                    winnersCount: winners,
+                    keyDays: keyDays,
+                    endsAt: endsAt,
+                    ended: false,
+                    participants: []
+                });
+                writeDB(db);
+
+                return interaction.editReply({ content: `✅ Giveaway deployed successfully!` });
+            }
+
+        }
+    } catch (globalError) {
+        console.error("Global Interaction Error:", globalError);
+        try {
+            if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: "An error occurred while processing this command.", ephemeral: true });
+            } else if (interaction.deferred && !interaction.replied) {
+                await interaction.editReply({ content: "An error occurred while processing this command." });
+            }
+        } catch (e) {}
+    }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[OK] Web Server is running on port ${PORT}`);
+});
+
+if (DISCORD_BOT_TOKEN) {
+    console.log("Attempting to log in to Discord...");
+    client.login(DISCORD_BOT_TOKEN).then(() => {
+        console.log(`[OK] Discord Bot Successfully Logged In as ${client.user.tag}`);
+    }).catch((err) => {
+        console.error("[ERROR] DISCORD BOT CRASHED ON STARTUP:", err.message);
+    });
+}
