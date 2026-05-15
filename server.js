@@ -366,16 +366,38 @@ app.get('/loader/:projectId', (req, res) => {
 
 const cmds = [];
 
-const cmdLogin = new SlashCommandBuilder()
-    .setName('login')
-    .setDescription('Link your API Key to your Discord account')
-    .addStringOption(opt => opt.setName('api_key').setDescription('Your Sanctuary API Key').setRequired(true));
-cmds.push(cmdLogin);
+cmds.push(new SlashCommandBuilder().setName('login').setDescription('Link your API Key to your Discord account')
+    .addStringOption(opt => opt.setName('api_key').setDescription('Your Sanctuary API Key').setRequired(true)));
 
-const otherCmds = ['set_admin_role', 'setup_panel', 'create_giveaway', 'generate_key', 'clear_keys', 'user_info', 'reset_hwid', 'extend_key', 'revoke_key'];
-for (const name of otherCmds) {
-    cmds.push(new SlashCommandBuilder().setName(name).setDescription(`Execute ${name}`));
-}
+cmds.push(new SlashCommandBuilder().setName('set_admin_role').setDescription('Set the role allowed to use admin bot commands')
+    .addRoleOption(opt => opt.setName('role').setDescription('The admin role').setRequired(true)));
+
+cmds.push(new SlashCommandBuilder().setName('setup_panel').setDescription('Deploy the Script Panel to this channel')
+    .addRoleOption(opt => opt.setName('role').setDescription('Customer Role to give buyers (Optional)').setRequired(false)));
+
+cmds.push(new SlashCommandBuilder().setName('create_giveaway').setDescription('Host an automated key giveaway')
+    .addIntegerOption(opt => opt.setName('winners').setDescription('Number of winners').setRequired(true))
+    .addIntegerOption(opt => opt.setName('days').setDescription('Key duration in days').setRequired(true))
+    .addIntegerOption(opt => opt.setName('duration').setDescription('Giveaway duration in minutes').setRequired(true)));
+
+cmds.push(new SlashCommandBuilder().setName('generate_key').setDescription('Generate new HWID keys for a project')
+    .addIntegerOption(opt => opt.setName('days').setDescription('Duration in days').setRequired(true))
+    .addIntegerOption(opt => opt.setName('amount').setDescription('Amount of keys').setRequired(true)));
+
+cmds.push(new SlashCommandBuilder().setName('clear_keys').setDescription('Clear unused and expired keys from a project'));
+
+cmds.push(new SlashCommandBuilder().setName('user_info').setDescription('Check a users key status')
+    .addUserOption(opt => opt.setName('user').setDescription('The user to check').setRequired(true)));
+
+cmds.push(new SlashCommandBuilder().setName('reset_hwid').setDescription('Admin HWID Reset')
+    .addStringOption(opt => opt.setName('key').setDescription('The HWID Key').setRequired(true)));
+
+cmds.push(new SlashCommandBuilder().setName('extend_key').setDescription('Admin Key Extend')
+    .addStringOption(opt => opt.setName('key').setDescription('The HWID Key').setRequired(true))
+    .addIntegerOption(opt => opt.setName('days').setDescription('Days to add').setRequired(true)));
+
+cmds.push(new SlashCommandBuilder().setName('revoke_key').setDescription('Admin Key Revoke')
+    .addStringOption(opt => opt.setName('key').setDescription('The HWID Key').setRequired(true)));
 
 client.once('ready', async () => {
     if (!DISCORD_BOT_TOKEN) {
@@ -493,7 +515,7 @@ setInterval(async () => {
                                 .setTitle(`${EMOJI_TADA} You won the Giveaway!`)
                                 .setColor(0x4F6CEE)
                                 .setDescription(`Congratulations! You won a **${gw.keyDays} Day** key for **${project.name}**!\n\nYour key has automatically been redeemed to your Discord account, and you have been given the customer role.\n\n**Your Script Loader:**\n\`\`\`lua\n${loaderCode}\n\`\`\``);
-                            await user.send({ embeds: [dmEmbed] });
+                            await user.send({ embeds: [dmEmbed] }).catch(() => {});
                         } catch(e) {}
                     }
 
@@ -598,9 +620,12 @@ client.on('interactionCreate', async interaction => {
                     const errEmbed = new EmbedBuilder().setColor(0xEF4444).setDescription(`${EMOJI_CROSS} Only the Server Owner or Global Admin can assign the Admin Role.`);
                     return interaction.reply({ embeds: [errEmbed], ephemeral: true });
                 }
-                const modal = new ModalBuilder().setCustomId("modal_setadminrole").setTitle('Set Admin Role');
-                modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('roleId').setLabel("Discord Role ID").setStyle(TextInputStyle.Short).setRequired(true)));
-                return await interaction.showModal(modal).catch(console.error);
+                const role = interaction.options.getRole('role');
+                if (!db.guildConfigs) db.guildConfigs = {};
+                if (!db.guildConfigs[interaction.guildId]) db.guildConfigs[interaction.guildId] = {};
+                db.guildConfigs[interaction.guildId].adminRoleId = role.id;
+                writeDB(db);
+                return interaction.reply({ content: `${EMOJI_CHECK} Admin role set to ${role}.`, ephemeral: true });
             }
             
             if (!isAuthorized) {
@@ -612,19 +637,26 @@ client.on('interactionCreate', async interaction => {
             }
 
             if (interaction.commandName === 'setup_panel') {
-                const row = buildProjectSelect("selectproj_setuppanel", interaction, db);
+                const role = interaction.options.getRole('role');
+                const roleId = role ? role.id : 'none';
+                const row = buildProjectSelect(`selectproj_setuppanel_${roleId}`, interaction, db);
                 if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
                 return interaction.reply({ content: "Please select a project for the panel:", components: [row], ephemeral: true });
             }
 
             if (interaction.commandName === 'create_giveaway') {
-                const row = buildProjectSelect("selectproj_giveaway", interaction, db);
+                const w = interaction.options.getInteger('winners');
+                const d = interaction.options.getInteger('days');
+                const m = interaction.options.getInteger('duration');
+                const row = buildProjectSelect(`selectproj_giveaway_${w}_${d}_${m}`, interaction, db);
                 if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
                 return interaction.reply({ content: "Please select a project for the giveaway:", components: [row], ephemeral: true });
             }
 
             if (interaction.commandName === 'generate_key') {
-                const row = buildProjectSelect("selectproj_genkey", interaction, db);
+                const d = interaction.options.getInteger('days');
+                const a = interaction.options.getInteger('amount');
+                const row = buildProjectSelect(`selectproj_genkey_${d}_${a}`, interaction, db);
                 if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
                 return interaction.reply({ content: "Please select a project to generate keys for:", components: [row], ephemeral: true });
             }
@@ -636,30 +668,64 @@ client.on('interactionCreate', async interaction => {
             }
 
             if (interaction.commandName === 'user_info') {
-                const row = buildProjectSelect("selectproj_userinfo", interaction, db);
+                const u = interaction.options.getUser('user');
+                const row = buildProjectSelect(`selectproj_userinfo_${u.id}`, interaction, db);
                 if (!row) return interaction.reply({ content: "You don't have any projects.", ephemeral: true });
                 return interaction.reply({ content: "Please select a project to view the user's info:", components: [row], ephemeral: true });
             }
 
             if (interaction.commandName === 'reset_hwid') {
-                const modal = new ModalBuilder().setCustomId("modal_resethwid").setTitle('Reset User HWID');
-                modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hwidKey').setLabel("The HWID Key").setStyle(TextInputStyle.Short).setRequired(true)));
-                return await interaction.showModal(modal).catch(console.error);
+                const keyStr = interaction.options.getString('key').trim();
+                let found = false;
+                db.projects.forEach(p => {
+                    const k = (p.hwidKeys || []).find(x => x.key === keyStr);
+                    if (k) { k.hwid = null; k.ip = null; k.lastReset = Date.now(); found = true; }
+                });
+                if (found) { 
+                    writeDB(db); 
+                    return interaction.reply({ content: `${EMOJI_CHECK} HWID successfully reset for that key.`, ephemeral: true });
+                }
+                return interaction.reply({ content: "Key not found.", ephemeral: true });
             }
 
             if (interaction.commandName === 'extend_key') {
-                const modal = new ModalBuilder().setCustomId("modal_extendkey").setTitle('Extend User Key');
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hwidKey').setLabel("The HWID Key").setStyle(TextInputStyle.Short).setRequired(true)),
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('days').setLabel("Days to Add").setStyle(TextInputStyle.Short).setRequired(true))
-                );
-                return await interaction.showModal(modal).catch(console.error);
+                const keyStr = interaction.options.getString('key').trim();
+                const days = interaction.options.getInteger('days');
+                let found = false;
+                db.projects.forEach(p => {
+                    const k = (p.hwidKeys || []).find(x => x.key === keyStr);
+                    if (k) { k.expiresAt += (days * 24 * 60 * 60 * 1000); k.roleRemoved = false; found = true; }
+                });
+                if (found) { 
+                    writeDB(db); 
+                    return interaction.reply({ content: `${EMOJI_CHECK} Key successfully extended by **${days}** days.`, ephemeral: true }); 
+                }
+                return interaction.reply({ content: "Key not found.", ephemeral: true });
             }
 
             if (interaction.commandName === 'revoke_key') {
-                const modal = new ModalBuilder().setCustomId("modal_revokekey").setTitle('Revoke User Key');
-                modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('hwidKey').setLabel("The HWID Key to delete").setStyle(TextInputStyle.Short).setRequired(true)));
-                return await interaction.showModal(modal).catch(console.error);
+                const keyStr = interaction.options.getString('key').trim();
+                let found = false;
+                db.projects.forEach(async p => {
+                    const idx = (p.hwidKeys || []).findIndex(x => x.key === keyStr);
+                    if (idx !== -1) { 
+                        const k = p.hwidKeys[idx];
+                        if (k.userId && p.discordConfig && p.discordConfig.roleId) {
+                            try {
+                                const guild = await client.guilds.fetch(p.discordConfig.guildId);
+                                const member = await guild.members.fetch(k.userId);
+                                await member.roles.remove(p.discordConfig.roleId);
+                            } catch (e) {}
+                        }
+                        p.hwidKeys.splice(idx, 1); 
+                        found = true; 
+                    }
+                });
+                if (found) { 
+                    writeDB(db); 
+                    return interaction.reply({ content: `${EMOJI_TRASH} Key successfully revoked and deleted.`, ephemeral: true }); 
+                }
+                return interaction.reply({ content: "Key not found.", ephemeral: true });
             }
         }
 
@@ -676,42 +742,117 @@ client.on('interactionCreate', async interaction => {
                 if (!project) return interaction.update({ content: "Project not found.", components: [] });
 
                 if (action === 'setuppanel') {
-                    try {
-                        const modal = new ModalBuilder().setCustomId(`modal_setuppanel_${projectId}`).setTitle('Setup Panel Settings');
-                        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('roleId').setLabel("Customer Role ID (Optional)").setStyle(TextInputStyle.Short).setRequired(false)));
-                        return await interaction.showModal(modal);
-                    } catch (e) { console.error(e); }
+                    const roleId = parts;
+                    project.discordConfig = { guildId: interaction.guildId, roleId: roleId === 'none' ? '' : roleId, channelId: interaction.channelId };
+                    writeDB(db);
+                    
+                    const embed = new EmbedBuilder()
+                        .setTitle(`${project.name} - Script Panel`)
+                        .setColor(0x4F6CEE)
+                        .setDescription("**Script:** Custom Loader\n\nUse the buttons below to manage your account:\n• Redeem your key to link your Discord account\n• Get the script download code\n• Reset your hardware ID\n• View your account statistics");
+
+                    const row1 = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId(`auth_redeem_${project.id}`).setLabel('Redeem Key').setEmoji("🔑").setStyle(ButtonStyle.Success),
+                        new ButtonBuilder().setCustomId(`auth_stats_${project.id}`).setLabel('Status').setEmoji("📊").setStyle(ButtonStyle.Secondary)
+                    );
+                    const row2 = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId(`auth_getscriptembed_${project.id}`).setLabel('Copy Script').setEmoji("📥").setStyle(ButtonStyle.Primary),
+                        new ButtonBuilder().setCustomId(`auth_getscriptnoembed_${project.id}`).setLabel('Copy Script (No Embed)').setEmoji("📋").setStyle(ButtonStyle.Primary)
+                    );
+                    const row3 = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId(`auth_reset_${project.id}`).setLabel('Reset HWID').setEmoji("🔄").setStyle(ButtonStyle.Danger)
+                    );
+
+                    await interaction.channel.send({ embeds: [embed], components: [row1, row2, row3] });
+                    return interaction.update({ content: `${EMOJI_CHECK} Panel deployed successfully.`, components: [] });
                 }
 
                 if (action === 'giveaway') {
-                    try {
-                        const modal = new ModalBuilder().setCustomId(`modal_giveaway_${projectId}`).setTitle('Giveaway Settings');
-                        modal.addComponents(
-                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('winners').setLabel("Number of Winners").setStyle(TextInputStyle.Short).setRequired(true)),
-                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('keyDays').setLabel("Key Duration (Days)").setStyle(TextInputStyle.Short).setRequired(true)),
-                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('durationMins').setLabel("Giveaway Duration (Minutes)").setStyle(TextInputStyle.Short).setRequired(true))
-                        );
-                        return await interaction.showModal(modal);
-                    } catch (e) { console.error(e); }
+                    const winners = parseInt(parts);
+                    const keyDays = parseInt(parts);
+                    const durationMins = parseInt(parts);
+                    
+                    const gwId = crypto.randomBytes(8).toString('hex');
+                    const endsAt = Date.now() + (durationMins * 60 * 1000);
+                    const timestamp = Math.floor(endsAt / 1000);
+
+                    const embed = new EmbedBuilder()
+                        .setTitle(`${EMOJI_TADA} **${project.name} Script Giveaway!** ${EMOJI_TADA}`)
+                        .setColor(0x4F6CEE)
+                        .setDescription(`**Prize:** ${winners}x Key(s) (${keyDays} Days)\n**Ends:** <t:${timestamp}:R> (<t:${timestamp}:f>)\n\nClick the button below to enter!`)
+                        .setFooter({ text: "Luau-Auth Giveaways" });
+
+                    const rowBtn = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId(`authgw_join_${gwId}`).setLabel('Join Giveaway').setEmoji("🎉").setStyle(ButtonStyle.Success)
+                    );
+
+                    const msg = await interaction.channel.send({ embeds: [embed], components: [rowBtn] });
+
+                    db.giveaways.push({
+                        id: gwId, messageId: msg.id, channelId: msg.channelId, guildId: msg.guildId,
+                        projectId: project.id, winnersCount: winners, keyDays: keyDays, endsAt: endsAt,
+                        ended: false, participants: []
+                    });
+                    writeDB(db);
+
+                    return interaction.update({ content: `${EMOJI_CHECK} Giveaway deployed successfully!`, components: [] });
                 }
 
                 if (action === 'genkey') {
-                    try {
-                        const modal = new ModalBuilder().setCustomId(`modal_genkey_${projectId}`).setTitle('Generate Keys');
-                        modal.addComponents(
-                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('days').setLabel("Duration in Days").setStyle(TextInputStyle.Short).setRequired(true)),
-                            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('amount').setLabel("Amount of Keys (Max 1000)").setStyle(TextInputStyle.Short).setRequired(true))
-                        );
-                        return await interaction.showModal(modal);
-                    } catch (e) { console.error(e); }
+                    const days = parseInt(parts);
+                    const amount = parseInt(parts);
+                    const expiresAt = Date.now() + (days * 24 * 60 * 60 * 1000);
+                    if (!project.hwidKeys) project.hwidKeys = [];
+                    
+                    const generated = [];
+                    for(let i=0; i<amount; i++) {
+                        const newKey = crypto.randomBytes(12).toString('hex').toLowerCase();
+                        generated.push(newKey);
+                        project.hwidKeys.push({ key: newKey, createdAt: Date.now(), expiresAt, userId: null, hwid: null, ip: null, roleRemoved: false });
+                    }
+                    writeDB(db);
+
+                    const okEmbed = new EmbedBuilder()
+                        .setTitle(`${EMOJI_CHECK} Generated ${amount} Key(s)`)
+                        .setColor(0x10B981)
+                        .addFields({ name: 'Project', value: project.name, inline: true }, { name: 'Duration', value: `${days} Days`, inline: true });
+
+                    if (amount > 15) {
+                        const buffer = Buffer.from(generated.join('\n'), 'utf-8');
+                        const attachment = new AttachmentBuilder(buffer, { name: 'keys.txt' });
+                        okEmbed.setDescription("Keys have been attached in the text file below.");
+                        return interaction.update({ content: "", embeds: [okEmbed], files: [attachment], components: [] });
+                    } else {
+                        const keyList = generated.map(k => `\`${k}\``).join('\n');
+                        okEmbed.setDescription(`**Keys:**\n${keyList}`);
+                        return interaction.update({ content: "", embeds: [okEmbed], components: [] });
+                    }
                 }
 
                 if (action === 'userinfo') {
+                    const targetUserId = parts;
+                    const userKey = (project.hwidKeys || []).find(k => k.userId === targetUserId);
+                    if (!userKey) return interaction.update({ content: `${EMOJI_CROSS} <@${targetUserId}> does not have a key for this project.`, components: [] });
+
+                    const daysLeft = Math.max(0, Math.ceil((userKey.expiresAt - Date.now()) / (1000 * 60 * 60 * 24)));
+                    const statusStr = userKey.hwid ? `Locked to Device (${userKey.hwid.substring(0, 8)}...)` : "Unbound";
+
+                    let targetUsername = "User";
                     try {
-                        const modal = new ModalBuilder().setCustomId(`modal_userinfo_${projectId}`).setTitle('Lookup User');
-                        modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('userId').setLabel("Discord User ID").setStyle(TextInputStyle.Short).setRequired(true)));
-                        return await interaction.showModal(modal);
-                    } catch (e) { console.error(e); }
+                        const tUser = await client.users.fetch(targetUserId);
+                        targetUsername = tUser.username;
+                    } catch(e) {}
+
+                    const infoEmbed = new EmbedBuilder()
+                        .setTitle(`User Info: ${targetUsername}`)
+                        .setColor(0x4F6CEE)
+                        .addFields(
+                            { name: "Project", value: project.name, inline: true },
+                            { name: "Key", value: `||${userKey.key}||`, inline: true },
+                            { name: "Days Left", value: `${daysLeft} Days`, inline: true },
+                            { name: "HWID Status", value: statusStr, inline: true }
+                        );
+                    return interaction.update({ content: "", embeds: [infoEmbed], components: [] });
                 }
 
                 if (action === 'clearkeys') {
@@ -782,7 +923,7 @@ client.on('interactionCreate', async interaction => {
                     const modal = new ModalBuilder().setCustomId(`modal_redeem_${projectId}`).setTitle('Redeem License Key');
                     const keyInput = new TextInputBuilder().setCustomId('keyInput').setLabel("Enter your HWID Key").setStyle(TextInputStyle.Short).setRequired(true);
                     modal.addComponents(new ActionRowBuilder().addComponents(keyInput));
-                    return await interaction.showModal(modal).catch(console.error);
+                    return await interaction.showModal(modal);
                 }
 
                 await interaction.deferReply({ ephemeral: true });
@@ -843,250 +984,38 @@ client.on('interactionCreate', async interaction => {
 
             const db = readDB();
 
-            if (action === 'setadminrole') {
-                await interaction.deferReply({ ephemeral: true });
-                const roleId = interaction.fields.getTextInputValue('roleId').trim();
-                if (!db.guildConfigs) db.guildConfigs = {};
-                if (!db.guildConfigs[interaction.guildId]) db.guildConfigs[interaction.guildId] = {};
-                db.guildConfigs[interaction.guildId].adminRoleId = roleId;
-                writeDB(db);
-                const okEmbed = new EmbedBuilder().setColor(0x10B981).setDescription(`${EMOJI_CHECK} Admin Role successfully set to <@&${roleId}>.`);
-                return interaction.editReply({ embeds: [okEmbed] });
-            }
-
-            if (action === 'resethwid') {
-                await interaction.deferReply({ ephemeral: true });
-                const keyStr = interaction.fields.getTextInputValue('hwidKey').trim();
-                let found = false;
-                db.projects.forEach(p => {
-                    const k = (p.hwidKeys || []).find(x => x.key === keyStr);
-                    if (k) { k.hwid = null; k.ip = null; k.lastReset = Date.now(); found = true; }
-                });
-                if (found) { 
-                    writeDB(db); 
-                    const okEmbed = new EmbedBuilder().setColor(0x10B981).setDescription(`${EMOJI_CHECK} HWID successfully reset for that key.`);
-                    return interaction.editReply({ embeds: [okEmbed] });
-                }
-                return interaction.editReply({ content: "Key not found." });
-            }
-
-            if (action === 'extendkey') {
-                await interaction.deferReply({ ephemeral: true });
-                const keyStr = interaction.fields.getTextInputValue('hwidKey').trim();
-                const days = parseInt(interaction.fields.getTextInputValue('days').trim());
-                if (isNaN(days)) return interaction.editReply({ content: "Invalid number of days." });
-
-                let found = false;
-                db.projects.forEach(p => {
-                    const k = (p.hwidKeys || []).find(x => x.key === keyStr);
-                    if (k) { k.expiresAt += (days * 24 * 60 * 60 * 1000); k.roleRemoved = false; found = true; }
-                });
-                if (found) { 
-                    writeDB(db); 
-                    const okEmbed = new EmbedBuilder().setColor(0x10B981).setDescription(`${EMOJI_CHECK} Key successfully extended by **${days}** days.`);
-                    return interaction.editReply({ embeds: [okEmbed] }); 
-                }
-                return interaction.editReply({ content: "Key not found." });
-            }
-
-            if (action === 'revokekey') {
-                await interaction.deferReply({ ephemeral: true });
-                const keyStr = interaction.fields.getTextInputValue('hwidKey').trim();
-                let found = false;
-                db.projects.forEach(async p => {
-                    const idx = (p.hwidKeys || []).findIndex(x => x.key === keyStr);
-                    if (idx !== -1) { 
-                        const k = p.hwidKeys[idx];
-                        if (k.userId && p.discordConfig && p.discordConfig.roleId) {
-                            try {
-                                const guild = await client.guilds.fetch(p.discordConfig.guildId);
-                                const member = await guild.members.fetch(k.userId);
-                                await member.roles.remove(p.discordConfig.roleId);
-                            } catch (e) {}
-                        }
-                        p.hwidKeys.splice(idx, 1); 
-                        found = true; 
-                    }
-                });
-                if (found) { 
-                    writeDB(db); 
-                    const okEmbed = new EmbedBuilder().setColor(0xEF4444).setDescription(`${EMOJI_TRASH} Key successfully revoked and deleted.`);
-                    return interaction.editReply({ embeds: [okEmbed] }); 
-                }
-                return interaction.editReply({ content: "Key not found." });
-            }
-
-            if (action === 'userinfo') {
+            if (action === 'redeem') {
                 await interaction.deferReply({ ephemeral: true });
                 const projectId = parts.join('_');
-                const project = db.projects.find(p => p.id === projectId);
-                if (!project) return interaction.editReply({ content: "Project no longer exists." });
-
-                const targetUserId = interaction.fields.getTextInputValue('userId').trim();
-                const userKey = (project.hwidKeys || []).find(k => k.userId === targetUserId);
-                if (!userKey) {
-                    const errEmbed = new EmbedBuilder().setColor(0xEF4444).setDescription(`${EMOJI_CROSS} <@${targetUserId}> does not have a key for this project.`);
-                    return interaction.editReply({ embeds: [errEmbed] });
-                }
-
-                const daysLeft = Math.max(0, Math.ceil((userKey.expiresAt - Date.now()) / (1000 * 60 * 60 * 24)));
-                const statusStr = userKey.hwid ? `Locked to Device (${userKey.hwid.substring(0, 8)}...)` : "Unbound";
-
-                let targetUsername = "User";
-                try {
-                    const tUser = await client.users.fetch(targetUserId);
-                    targetUsername = tUser.username;
-                } catch(e) {}
-
-                const infoEmbed = new EmbedBuilder()
-                    .setTitle(`User Info: ${targetUsername}`)
-                    .setColor(0x4F6CEE)
-                    .addFields(
-                        { name: "Project", value: project.name, inline: true },
-                        { name: "Key", value: `||${userKey.key}||`, inline: true },
-                        { name: "Days Left", value: `${daysLeft} Days`, inline: true },
-                        { name: "HWID Status", value: statusStr, inline: true }
-                    );
-                return interaction.editReply({ embeds: [infoEmbed] });
-            }
-
-            if (action === 'setuppanel') {
-                await interaction.deferReply({ ephemeral: true });
-                const projectId = parts.join('_');
-                const project = db.projects.find(p => p.id === projectId);
-                if (!project) return interaction.editReply({ content: "Project no longer exists." });
-
-                const roleId = interaction.fields.getTextInputValue('roleId').trim();
-                project.discordConfig = { guildId: interaction.guildId, roleId: roleId, channelId: interaction.channelId };
-                writeDB(db);
+                const inputKey = interaction.fields.getTextInputValue('keyInput').replace(/\s+/g, '');
                 
-                const embed = new EmbedBuilder()
-                    .setTitle(`${project.name} - Script Panel`)
-                    .setColor(0x4F6CEE)
-                    .setDescription("**Script:** Custom Loader\n\nUse the buttons below to manage your account:\n• Redeem your key to link your Discord account\n• Get the script download code\n• Reset your hardware ID\n• View your account statistics");
-
-                const row1 = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`auth_redeem_${project.id}`).setLabel('Redeem Key').setEmoji("🔑").setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId(`auth_stats_${project.id}`).setLabel('Status').setEmoji("📊").setStyle(ButtonStyle.Secondary)
-                );
-                const row2 = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`auth_getscriptembed_${project.id}`).setLabel('Copy Script').setEmoji("📥").setStyle(ButtonStyle.Primary),
-                    new ButtonBuilder().setCustomId(`auth_getscriptnoembed_${project.id}`).setLabel('Copy Script (No Embed)').setEmoji("📋").setStyle(ButtonStyle.Primary)
-                );
-                const row3 = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`auth_reset_${project.id}`).setLabel('Reset HWID').setEmoji("🔄").setStyle(ButtonStyle.Danger)
-                );
-
-                const channel = await client.channels.fetch(interaction.channelId).catch(() => null);
-                if (!channel) return interaction.editReply({ content: "❌ Could not access the channel." });
-
-                await channel.send({ embeds: [embed], components: [row1, row2, row3] }).catch(() => {});
-                
-                const okEmbed = new EmbedBuilder().setColor(0x10B981).setDescription(`${EMOJI_CHECK} Panel deployed successfully.`);
-                return interaction.editReply({ embeds: [okEmbed] });
-            }
-
-            if (action === 'genkey') {
-                await interaction.deferReply({ ephemeral: true });
-                const projectId = parts.join('_');
                 const project = db.projects.find(p => p.id === projectId);
                 if (!project) return interaction.editReply({ content: "Project no longer exists." });
 
-                const days = parseInt(interaction.fields.getTextInputValue('days'));
-                const amount = parseInt(interaction.fields.getTextInputValue('amount'));
-                if (isNaN(days) || isNaN(amount)) return interaction.editReply({ content: "Invalid numbers provided." });
+                const targetKey = (project.hwidKeys || []).find(k => k.key === inputKey);
+                if (!targetKey) return interaction.editReply({ content: "Invalid Key." });
+                if (targetKey.userId && targetKey.userId !== interaction.user.id) return interaction.editReply({ content: "This key has already been claimed by another user." });
+                if (targetKey.userId === interaction.user.id) return interaction.editReply({ content: "You have already claimed this key." });
+                if (Date.now() > targetKey.expiresAt) return interaction.editReply({ content: "This key is expired." });
 
-                const expiresAt = Date.now() + (days * 24 * 60 * 60 * 1000);
-                if (!project.hwidKeys) project.hwidKeys = [];
-                
-                const generated = [];
-                for(let i=0; i<amount; i++) {
-                    const newKey = crypto.randomBytes(12).toString('hex').toLowerCase();
-                    generated.push(newKey);
-                    project.hwidKeys.push({ key: newKey, createdAt: Date.now(), expiresAt: expiresAt, userId: null, hwid: null, ip: null, roleRemoved: false });
-                }
+                if (!interaction.guild) return interaction.editReply({ content: "Please redeem this key inside the server, not in DMs." });
+
+                targetKey.userId = interaction.user.id;
                 writeDB(db);
 
-                const okEmbed = new EmbedBuilder()
-                    .setTitle(`✅ Generated ${amount} Key(s)`)
-                    .setColor(0x10B981)
-                    .addFields(
-                        { name: 'Project', value: project.name, inline: true },
-                        { name: 'Duration', value: `${days} Days`, inline: true }
-                    );
-
-                if (amount > 15) {
-                    const buffer = Buffer.from(generated.join('\n'), 'utf-8');
-                    const attachment = new AttachmentBuilder(buffer, { name: 'keys.txt' });
-                    okEmbed.setDescription("Keys have been attached in the text file below.");
-                    return interaction.editReply({ embeds: [okEmbed], files: [attachment] });
-                } else {
-                    const keyList = generated.map(k => `\`${k}\``).join('\n');
-                    okEmbed.setDescription(`**Keys:**\n${keyList}`);
-                    return interaction.editReply({ embeds: [okEmbed] });
+                let roleAssignedStr = "";
+                if (project.discordConfig && project.discordConfig.roleId) {
+                    try {
+                        const member = await interaction.guild.members.fetch(interaction.user.id);
+                        await member.roles.add(project.discordConfig.roleId);
+                        roleAssignedStr = " and you have been granted the customer role";
+                    } catch (err) {}
                 }
+                return interaction.editReply({ content: `${EMOJI_CHECK} Key successfully redeemed${roleAssignedStr}! Click Copy Script to start using it.` });
             }
-
-            if (action === 'giveaway') {
-                await interaction.deferReply({ ephemeral: true });
-                const projectId = parts.join('_');
-                const project = db.projects.find(p => p.id === projectId);
-                if (!project) return interaction.editReply({ content: "Project no longer exists." });
-
-                const winners = parseInt(interaction.fields.getTextInputValue('winners'));
-                const keyDays = parseInt(interaction.fields.getTextInputValue('keyDays'));
-                const durationMins = parseInt(interaction.fields.getTextInputValue('durationMins'));
-
-                if (isNaN(winners) || isNaN(keyDays) || isNaN(durationMins)) {
-                    return interaction.editReply({ content: "Invalid numbers provided." });
-                }
-
-                const gwId = crypto.randomBytes(8).toString('hex');
-                const endsAt = Date.now() + (durationMins * 60 * 1000);
-                const timestamp = Math.floor(endsAt / 1000);
-
-                const embed = new EmbedBuilder()
-                    .setTitle(`🎉 **${project.name} Script Giveaway!** 🎉`)
-                    .setColor(0x4F6CEE)
-                    .setDescription(`**Prize:** ${winners}x Key(s) (${keyDays} Days)\n**Ends:** <t:${timestamp}:R> (<t:${timestamp}:f>)\n\nClick the button below to enter!`)
-                    .setFooter({ text: "Luau-Auth Giveaways" });
-
-                const rowBtn = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId(`authgw_join_${gwId}`).setLabel('Join Giveaway').setEmoji("🎉").setStyle(ButtonStyle.Success)
-                );
-
-                const channel = await client.channels.fetch(interaction.channelId).catch(() => null);
-                if (!channel) return interaction.editReply({ content: `❌ Could not access the channel.` });
-
-                const msg = await channel.send({ embeds: [embed], components: [rowBtn] });
-
-                db.giveaways.push({
-                    id: gwId,
-                    messageId: msg.id,
-                    channelId: msg.channelId,
-                    guildId: msg.guildId,
-                    projectId: project.id,
-                    winnersCount: winners,
-                    keyDays: keyDays,
-                    endsAt: endsAt,
-                    ended: false,
-                    participants: []
-                });
-                writeDB(db);
-
-                return interaction.editReply({ content: `✅ Giveaway deployed successfully!` });
-            }
-
         }
     } catch (globalError) {
         console.error("Global Interaction Error:", globalError);
-        try {
-            if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-                await interaction.reply({ content: "An error occurred while processing this command.", ephemeral: true });
-            } else if (interaction.deferred && !interaction.replied) {
-                await interaction.editReply({ content: "An error occurred while processing this command." });
-            }
-        } catch (e) {}
     }
 });
 
