@@ -186,8 +186,18 @@ app.get('/loader/:projectId', (req, res) => {
     res.type('text/plain').send(lua + `else warn("Sanctuary: No valid script.") end`);
 });
 
-const cmds = ['login', 'set_admin_role', 'setup_panel', 'create_giveaway', 'generate_key', 'clear_keys', 'user_info', 'reset_hwid', 'extend_key', 'revoke_key'].map(name => new SlashCommandBuilder().setName(name).setDescription(`Execute ${name}`));
-cmds.addStringOption(opt => opt.setName('api_key').setDescription('Your Sanctuary API Key').setRequired(true));
+const cmds = [];
+
+const cmdLogin = new SlashCommandBuilder()
+    .setName('login')
+    .setDescription('Link your API Key to your Discord account')
+    .addStringOption(opt => opt.setName('api_key').setDescription('Your Sanctuary API Key').setRequired(true));
+cmds.push(cmdLogin);
+
+const otherCmds = ['set_admin_role', 'setup_panel', 'create_giveaway', 'generate_key', 'clear_keys', 'user_info', 'reset_hwid', 'extend_key', 'revoke_key'];
+for (const name of otherCmds) {
+    cmds.push(new SlashCommandBuilder().setName(name).setDescription(`Execute ${name}`));
+}
 
 client.once('ready', async () => {
     try { await new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN).put(Routes.applicationCommands(client.user.id), { body: cmds.map(c => c.toJSON()) }); console.log("✅ Commands Registered"); } catch (e) {}
