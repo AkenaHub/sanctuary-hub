@@ -19,6 +19,8 @@ const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const HOST_URL = process.env.HOST_URL;
 const REDIRECT_URI = `${HOST_URL}/api/auth/callback`;
 
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+
 const EMOJI_CHECK = "\u2705";
 const readDB = () => {
     try {
